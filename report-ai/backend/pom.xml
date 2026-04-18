@@ -34,8 +34,16 @@
     <modules>
         <module>report-hub-common</module>
         <module>report-hub-system</module>
-        <!-- knowledge / report / api 将在后续 Task 中加入 -->
+        <module>report-hub-knowledge</module>
+        <!-- report / api 将在后续 Task 中加入 -->
     </modules>
+
+    <repositories>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+    </repositories>
 
     <dependencyManagement>
         <dependencies>
@@ -129,7 +137,7 @@
         <dependency>
             <groupId>com.volcengine</groupId>
             <artifactId>volcengine-java-sdk-ark-runtime</artifactId>
-            <version>LATEST</version>
+            <version>2.0.0</version>
         </dependency>
     </dependencies>
 

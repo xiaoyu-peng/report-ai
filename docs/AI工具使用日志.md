@@ -21,7 +21,9 @@
 | 2026-04-18 11:40 | Leo | Claude Code | 引入 7 角色虚拟 AI 团队并映射到产物清单 | `408f52f` |
 | 2026-04-18 11:50 | Lens | Claude Code | 写精简 PRD：5 用户故事 + 30 个 v1 接口契约 + 验收清单 | 本 commit |
 | 2026-04-18 11:52 | Leo | Claude Code | 启动 AI 工具使用日志（本文件） | 本 commit |
-| 2026-04-18 11:50 | Bolt | Claude Code + sed + mvn | Task 3: 移植 22 个 system 文件（user/role/department/log），遇到 LogController 引用 SkillMCP-only 类，改写为仅保留 operation 查询；pom.xml 临时 exclude 4 个 Ark/Doubao 文件待 Task 5 处理 | 待 commit |
+| 2026-04-18 11:50 | Bolt | Claude Code + sed + mvn | Task 3: 移植 22 个 system 文件（user/role/department/log），遇到 LogController 引用 SkillMCP-only 类，改写为仅保留 operation 查询；pom.xml 临时 exclude 4 个 Ark/Doubao 文件待 Task 5 处理 | `867a7fb` |
+| 2026-04-18 11:56 | Leo | git | 发现 `.doubao`（含 api-key）被 `git add` 进 index，撤回 + 加 gitignore + push 固化 | `ee2a6e9` |
+| 2026-04-18 12:04 | Bolt | Claude Code + Tika 2.9 + MySQL FULLTEXT | Task 4 knowledge 模块（21 类，BUILD SUCCESS）：KB/Doc/Chunk 三层实体 + Tika 解析 + 段落+句子两级分块（500 char + 50 overlap）+ Jsoup URL 抓取 + FULLTEXT BOOLEAN MODE 检索（CJK 单字分词） | 待 commit |
 
 ## 使用的 AI 工具汇总
 
