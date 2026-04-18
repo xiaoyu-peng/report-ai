@@ -61,22 +61,4 @@
         </dependency>
     </dependencies>
 
-    <build>
-        <plugins>
-            <!-- 临时排除 com/reportai/utils/ArkClient|DoubaoClient 的编译，
-                 等 com.volcengine + com.wenge.xinghe 依赖就位后再恢复。 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>com/reportai/utils/ArkClient.java</exclude>
-                        <exclude>com/reportai/utils/DoubaoClient.java</exclude>
-                        <exclude>com/reportai/hub/config/DoubaoAutoConfiguration.java</exclude>
-                        <exclude>com/reportai/hub/config/DoubaoProperties.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 </project>

@@ -9,7 +9,7 @@ import com.reportai.hub.report.dto.ReportCreateDTO;
 import com.reportai.hub.report.entity.Report;
 import com.reportai.hub.report.entity.ReportTemplate;
 import com.reportai.hub.report.entity.ReportVersion;
-import com.reportai.hub.report.llm.LlmClient;
+import com.reportai.hub.common.llm.LlmClient;
 import com.reportai.hub.report.mapper.ReportMapper;
 import com.reportai.hub.report.mapper.ReportTemplateMapper;
 import com.reportai.hub.report.mapper.ReportVersionMapper;

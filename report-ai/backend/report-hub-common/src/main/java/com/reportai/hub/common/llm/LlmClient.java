@@ -1,4 +1,4 @@
-package com.reportai.hub.report.llm;
+package com.reportai.hub.common.llm;
 
 import java.util.function.Consumer;
 

@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reportai.hub.common.exception.BusinessException;
 import com.reportai.hub.report.entity.ReportTemplate;
-import com.reportai.hub.report.llm.LlmClient;
+import com.reportai.hub.common.llm.LlmClient;
 import com.reportai.hub.report.mapper.ReportTemplateMapper;
 import com.reportai.hub.report.prompt.Prompts;
 import com.reportai.hub.report.service.TemplateService;

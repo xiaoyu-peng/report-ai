@@ -1,4 +1,4 @@
-package com.reportai.hub.report.llm;
+package com.reportai.hub.common.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,8 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.reportai.hub.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -30,8 +29,7 @@ import java.util.function.Consumer;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@Configuration
-@EnableConfigurationProperties(LlmProperties.class)
+@ConditionalOnProperty(prefix = "report-ai.llm", name = "provider", havingValue = "claude")
 public class ClaudeLlmClient implements LlmClient {
 
     private final LlmProperties props;
