@@ -28,9 +28,11 @@ public class McpController {
     }
 
     @Operation(summary = "获取文章详情")
-    @GetMapping("/search/article/{articleId}")
-    public ResponseEntity<JsonNode> getArticleDetail(@PathVariable String articleId) {
-        JsonNode result = searchService.getArticleDetail(articleId);
+    @GetMapping("/search/article/{uuid}")
+    public ResponseEntity<JsonNode> getArticleDetail(
+            @PathVariable String uuid,
+            @RequestParam String publishTime) {
+        JsonNode result = searchService.getArticleDetail(uuid, publishTime);
         return ResponseEntity.ok(result);
     }
 

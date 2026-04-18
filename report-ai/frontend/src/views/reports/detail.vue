@@ -142,7 +142,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, EditPen, Download } from '@element-plus/icons-vue'
-import { getReport, getReportVersions, getVersionDiff, type Report, type ReportVersion } from '@/api/report'
+import { getReport, getReportVersions, getVersionDiff, exportDocx, type Report, type ReportVersion } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
 import * as Diff from 'diff'
 
@@ -301,7 +301,38 @@ function goEdit() {
 }
 
 async function handleExport(kind: string) {
-  ElMessage.info(`导出 ${kind} 功能开发中`)
+  if (!report.value) return
+  try {
+    if (kind === 'docx') {
+      const res = await exportDocx(report.value.id)
+      const blob = new Blob([res as any], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${report.value.title || '报告'}.docx`
+      document.body.appendChild(a)
+      a.click()
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }, 100)
+      ElMessage.success('Word 导出成功')
+    } else if (kind === 'pdf') {
+      const el = document.querySelector('.markdown-body') as HTMLElement | null
+      if (!el) { ElMessage.warning('无内容可导出'); return }
+      const html2pdf = (await import('html2pdf.js')).default
+      html2pdf().set({
+        margin: [15, 15, 15, 15],
+        filename: `${report.value.title || '报告'}.pdf`,
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(el).save()
+      ElMessage.success('PDF 导出成功')
+    }
+  } catch (e) {
+    console.error('导出失败:', e)
+    ElMessage.error('导出失败')
+  }
 }
 
 function statusTagType(status?: string): 'success' | 'info' | 'warning' | 'danger' {

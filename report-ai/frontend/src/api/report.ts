@@ -97,6 +97,10 @@ export const getReportVersions = (reportId: number) =>
 export const getVersionDiff = (v1: number, v2: number) =>
   request.get(`/v1/reports/versions/diff`, { params: { from: v1, to: v2 } })
 
+// Export
+export const exportDocx = (reportId: number) =>
+  request.get(`/v1/export/report/${reportId}/docx`, { responseType: 'blob' })
+
 // Dashboard stats
 export interface DashboardStats {
   totalReports: number

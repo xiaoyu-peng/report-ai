@@ -54,8 +54,8 @@ services:
       - "8081:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/report_ai?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: root123456
+      SPRING_DATASOURCE_USERNAME: reportai
+      SPRING_DATASOURCE_PASSWORD: reportai123
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
       JWT_SECRET: report-ai-jwt-secret-key-2026-must-be-long-enough-for-hs256
@@ -66,6 +66,7 @@ services:
       DOUBAO_ENDPOINT: ${DOUBAO_ENDPOINT:-}
       DOUBAO_MODEL: ${DOUBAO_MODEL:-doubao-seed-2-0-lite-260215}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      QINGTIAN_MCP_APPKEY: ${QINGTIAN_MCP_APPKEY:-OOn05z7m}
     depends_on:
       mysql:
         condition: service_healthy

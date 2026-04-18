@@ -1,6 +1,9 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+GRANT ALL PRIVILEGES ON `report_ai`.* TO 'reportai'@'%';
+FLUSH PRIVILEGES;
+
 -- 系统用户表
 CREATE TABLE IF NOT EXISTS `sys_user` (
   `id` bigint NOT NULL AUTO_INCREMENT,
