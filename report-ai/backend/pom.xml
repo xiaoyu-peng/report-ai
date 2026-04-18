@@ -29,6 +29,7 @@
         <knife4j.version>4.4.0</knife4j.version>
         <tika.version>2.9.2</tika.version>
         <anthropic.version>0.8.0</anthropic.version>
+        <poi.version>5.2.5</poi.version>
     </properties>
 
     <modules>
@@ -97,6 +98,13 @@
                 <groupId>org.apache.tika</groupId>
                 <artifactId>tika-parsers-standard-package</artifactId>
                 <version>${tika.version}</version>
+            </dependency>
+
+            <!-- DOCX 导出（赛题模块五：支持导出 Word） -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
             </dependency>
 
             <dependency>

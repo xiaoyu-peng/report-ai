@@ -142,6 +142,24 @@
                 v-if="currentReportId && content"
                 trigger="click"
                 :disabled="generating || rewriting"
+                @command="handleExport"
+              >
+                <el-button size="small" type="primary" plain :loading="exporting">
+                  <el-icon><Download /></el-icon>
+                  导出
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="docx">导出 Word（.docx）</el-dropdown-item>
+                    <el-dropdown-item command="pdf">导出 PDF（含角标）</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-dropdown
+                v-if="currentReportId && content"
+                trigger="click"
+                :disabled="generating || rewriting"
                 @command="handleRewrite"
               >
                 <el-button size="small" type="warning" plain :loading="rewriting">
@@ -195,6 +213,7 @@
         <!-- Markdown 预览（含 [n] 角标，点击跳转溯源面板） -->
         <div
           v-else-if="content && viewMode === 'preview'"
+          ref="previewEl"
           class="report-preview"
           @click="handleCiteClick"
           v-html="renderedHtml"
@@ -239,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import {
   ElMessage,
   ElMessageBox
@@ -252,7 +271,8 @@ import {
   CopyDocument,
   Select,
   ArrowDown,
-  Collection
+  Collection,
+  Download
 } from '@element-plus/icons-vue'
 import { getKnowledgeBases, type KnowledgeBase } from '@/api/knowledge'
 import {
@@ -295,6 +315,7 @@ const content = ref('')
 const generating = ref(false)
 const rewriting = ref(false)
 const saving = ref(false)
+const exporting = ref(false)
 const currentReportId = ref<number | null>(null)
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const templates = ref<Template[]>([])
@@ -306,6 +327,9 @@ const highlightedCite = ref<number | null>(null)
 // 编辑 / 预览切换。生成/改写过程中默认编辑态（让用户看流式 token），完成后跳到预览态以显示角标。
 const viewMode = ref<'edit' | 'preview'>('edit')
 const renderedHtml = computed(() => renderReportMarkdown(content.value))
+
+// 预览 DOM ref —— PDF 导出用它作为 html2pdf 的渲染源。
+const previewEl = ref<HTMLDivElement | null>(null)
 
 // In-flight abort controller for streaming requests
 let activeController: AbortController | null = null
@@ -693,6 +717,86 @@ async function copyContent() {
       document.body.removeChild(ta)
     }
   }
+}
+
+function safeFilename(raw: string, fallback: string): string {
+  if (!raw) return fallback
+  const cleaned = raw.replace(/[\\/:*?"<>|\x00-\x1f]/g, '').trim()
+  return cleaned.slice(0, 80) || fallback
+}
+
+async function handleExport(kind: 'docx' | 'pdf') {
+  if (!currentReportId.value || !content.value) return
+  exporting.value = true
+  try {
+    if (kind === 'docx') {
+      await exportDocx()
+    } else {
+      await exportPdf()
+    }
+  } catch (e: any) {
+    console.error(`导出 ${kind} 失败:`, e)
+    ElMessage.error(e?.message || '导出失败，请重试')
+  } finally {
+    exporting.value = false
+  }
+}
+
+/**
+ * Word 导出：后端 /export/docx 产出 .docx，走 fetch + Authorization header，
+ * 再把 Blob 塞进临时 <a download> 触发保存。EventSource/window.open 无法带 JWT。
+ */
+async function exportDocx() {
+  const token = userStore.token || localStorage.getItem('token') || ''
+  const resp = await fetch(`/api/v1/reports/${currentReportId.value}/export/docx`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` }
+  })
+  if (!resp.ok) throw new Error(`导出接口返回 ${resp.status}`)
+  const blob = await resp.blob()
+  const filename = safeFilename(form.value.title, 'report') + '.docx'
+  triggerBlobDownload(blob, filename)
+  ElMessage.success('Word 已导出')
+}
+
+/**
+ * PDF 导出：html2pdf 从预览 DOM 抓图转 PDF，保留 [n] 角标样式。
+ * 若当前不是预览态，先切过去并等 DOM 更新，否则抓到的是空节点。
+ */
+async function exportPdf() {
+  if (viewMode.value !== 'preview') {
+    viewMode.value = 'preview'
+    await nextTick()
+  }
+  const el = previewEl.value
+  if (!el) throw new Error('预览内容未就绪')
+  // 动态 import 避免首屏 bundle 体积被 html2pdf 拖胖（jsPDF + html2canvas）
+  const html2pdf = (await import('html2pdf.js')).default
+  const filename = safeFilename(form.value.title, 'report') + '.pdf'
+  await html2pdf()
+    .set({
+      filename,
+      margin: [15, 15, 20, 15], // mm: 上 右 下 左
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      // pagebreak 不在 html2pdf.js 的 .d.ts 里但运行期支持；用 any 绕过类型
+      ...({ pagebreak: { mode: ['css', 'legacy'] } } as any)
+    })
+    .from(el)
+    .save()
+  ElMessage.success('PDF 已导出')
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // 稍延迟释放，避免部分浏览器触发下载前就被回收
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 </script>
 
