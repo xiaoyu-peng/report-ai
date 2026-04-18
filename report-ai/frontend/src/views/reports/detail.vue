@@ -33,26 +33,48 @@
       <div class="content-area">
         <el-tabs v-model="activeTab">
           <el-tab-pane label="报告正文" name="content">
-            <div class="markdown-body" @click="handleCiteClick" v-html="renderedContent"></div>
+            <div class="content-with-outline">
+              <div class="outline-nav" v-if="outlineItems.length > 0">
+                <div class="outline-title">
+                  <el-icon><List /></el-icon>
+                  大纲导航
+                </div>
+                <div class="outline-list">
+                  <div
+                    v-for="item in outlineItems"
+                    :key="item.id"
+                    class="outline-item"
+                    :class="{ active: activeOutlineId === item.id, [`level-${item.level}`]: true }"
+                    @click="scrollToOutline(item.id)"
+                  >
+                    {{ item.text }}
+                  </div>
+                </div>
+              </div>
+              <div class="content-main">
+                <ReportCharts v-if="report?.topic" :topic="report.topic" />
+                <div class="markdown-body" ref="contentEl" @click="handleCiteClick" v-html="renderedContent"></div>
+              </div>
+            </div>
           </el-tab-pane>
           <el-tab-pane label="版本对比" name="diff">
             <div class="diff-controls">
               <span class="diff-label">对比版本：</span>
-              <el-select v-model="diffFrom" placeholder="旧版本" size="small" style="width: 160px">
+              <el-select v-model="diffFrom" placeholder="旧版本" size="small" style="width: 180px">
                 <el-option
                   v-for="v in versions"
                   :key="v.id"
                   :label="`v${v.versionNum} - ${modeLabel(v.sourceMode)}`"
-                  :value="v.id"
+                  :value="v.versionNum"
                 />
               </el-select>
               <span class="diff-arrow">→</span>
-              <el-select v-model="diffTo" placeholder="新版本" size="small" style="width: 160px">
+              <el-select v-model="diffTo" placeholder="新版本" size="small" style="width: 180px">
                 <el-option
                   v-for="v in versions"
                   :key="v.id"
                   :label="`v${v.versionNum} - ${modeLabel(v.sourceMode)}`"
-                  :value="v.id"
+                  :value="v.versionNum"
                 />
               </el-select>
               <el-button
@@ -64,39 +86,63 @@
               >
                 对比
               </el-button>
+              <div class="diff-mode-switch">
+                <el-radio-group v-model="diffViewMode" size="small">
+                  <el-radio-button value="split">双栏对比</el-radio-button>
+                  <el-radio-button value="revision">修订痕迹</el-radio-button>
+                </el-radio-group>
+              </div>
             </div>
 
-            <div v-if="diffResult" class="diff-view">
-              <div class="diff-columns">
-                <div class="diff-col diff-old">
-                  <div class="diff-col-header">
-                    <el-tag type="danger" size="small" effect="plain">旧版本</el-tag>
-                  </div>
-                  <div class="diff-col-body">
-                    <div
-                      v-for="(line, i) in diffResult.oldLines"
-                      :key="'o-' + i"
-                      class="diff-line"
-                      :class="lineClass(line.type)"
-                    >
-                      <span class="line-prefix">{{ linePrefix(line.type) }}</span>
-                      <span class="line-text">{{ line.text }}</span>
+            <div v-if="diffResult">
+              <div v-if="diffViewMode === 'revision'" class="revision-view">
+                <div class="revision-toolbar">
+                  <el-button type="success" size="small" @click="acceptAllChanges">
+                    <el-icon><Check /></el-icon>
+                    全部接受
+                  </el-button>
+                  <el-button type="danger" size="small" @click="rejectAllChanges">
+                    <el-icon><Close /></el-icon>
+                    全部拒绝
+                  </el-button>
+                  <span class="revision-stats">
+                    {{ changeStats.added }} 处新增 · {{ changeStats.removed }} 处删除
+                  </span>
+                </div>
+                <div class="revision-body" v-html="revisionHtml"></div>
+              </div>
+              <div v-else class="diff-view">
+                <div class="diff-columns">
+                  <div class="diff-col diff-old">
+                    <div class="diff-col-header">
+                      <el-tag type="danger" size="small" effect="plain">旧版本 (v{{ diffFrom }})</el-tag>
+                    </div>
+                    <div class="diff-col-body">
+                      <div
+                        v-for="(line, i) in diffResult.oldLines"
+                        :key="'o-' + i"
+                        class="diff-line"
+                        :class="lineClass(line.type)"
+                      >
+                        <span class="line-prefix">{{ linePrefix(line.type) }}</span>
+                        <span class="line-text">{{ line.text }}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div class="diff-col diff-new">
-                  <div class="diff-col-header">
-                    <el-tag type="success" size="small" effect="plain">新版本</el-tag>
-                  </div>
-                  <div class="diff-col-body">
-                    <div
-                      v-for="(line, i) in diffResult.newLines"
-                      :key="'n-' + i"
-                      class="diff-line"
-                      :class="lineClass(line.type)"
-                    >
-                      <span class="line-prefix">{{ linePrefix(line.type) }}</span>
-                      <span class="line-text">{{ line.text }}</span>
+                  <div class="diff-col diff-new">
+                    <div class="diff-col-header">
+                      <el-tag type="success" size="small" effect="plain">新版本 (v{{ diffTo }})</el-tag>
+                    </div>
+                    <div class="diff-col-body">
+                      <div
+                        v-for="(line, i) in diffResult.newLines"
+                        :key="'n-' + i"
+                        class="diff-line"
+                        :class="lineClass(line.type)"
+                      >
+                        <span class="line-prefix">{{ linePrefix(line.type) }}</span>
+                        <span class="line-text">{{ line.text }}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -128,6 +174,18 @@
               </div>
               <div class="version-time">{{ formatTime(v.createdAt) }}</div>
               <div v-if="v.changeSummary" class="version-summary">{{ v.changeSummary }}</div>
+              <div class="version-actions">
+                <el-button
+                  v-if="v.versionNum !== latestVersionNum"
+                  size="small"
+                  type="primary"
+                  link
+                  @click.stop="handleRestore(v)"
+                >
+                  <el-icon><RefreshLeft /></el-icon>
+                  回滚
+                </el-button>
+              </div>
             </div>
           </div>
           <el-empty v-if="!versionsLoading && versions.length === 0" description="暂无版本" :image-size="60" />
@@ -138,13 +196,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { ArrowLeft, EditPen, Download } from '@element-plus/icons-vue'
-import { getReport, getReportVersions, getVersionDiff, exportDocx, type Report, type ReportVersion } from '@/api/report'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft } from '@element-plus/icons-vue'
+import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, type Report, type ReportVersion } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
 import * as Diff from 'diff'
+import ReportCharts from '@/components/ReportCharts.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -160,18 +219,31 @@ const diffFrom = ref<number | null>(null)
 const diffTo = ref<number | null>(null)
 const diffLoading = ref(false)
 const diffResult = ref<{ oldLines: DiffLine[]; newLines: DiffLine[] } | null>(null)
+const diffViewMode = ref<'split' | 'revision'>('split')
+
+const contentEl = ref<HTMLDivElement | null>(null)
 
 interface DiffLine {
   type: 'same' | 'added' | 'removed' | 'modified'
   text: string
 }
 
+interface OutlineItem {
+  id: string
+  text: string
+  level: number
+}
+
+const outlineItems = ref<OutlineItem[]>([])
+const activeOutlineId = ref('')
+
 onMounted(async () => {
   await Promise.all([loadReport(), loadVersions()])
   if (versions.value.length >= 2) {
-    diffFrom.value = versions.value[versions.value.length - 2].id
-    diffTo.value = versions.value[versions.value.length - 1].id
+    diffFrom.value = versions.value[versions.value.length - 2].versionNum
+    diffTo.value = versions.value[versions.value.length - 1].versionNum
   }
+  nextTick(() => buildOutline())
 })
 
 async function loadReport() {
@@ -199,10 +271,32 @@ async function loadVersions() {
   }
 }
 
+const latestVersionNum = computed(() => {
+  if (versions.value.length === 0) return 0
+  return Math.max(...versions.value.map(v => v.versionNum))
+})
+
 function selectVersion(v: ReportVersion) {
   selectedVersionId.value = v.id
   if (report.value) {
     report.value = { ...report.value, content: v.content, wordCount: v.wordCount } as Report
+  }
+  nextTick(() => buildOutline())
+}
+
+async function handleRestore(v: ReportVersion) {
+  try {
+    await ElMessageBox.confirm(
+      `确认回滚到 v${v.versionNum}（${modeLabel(v.sourceMode)}）？系统将基于该版本创建新版本。`,
+      '版本回滚',
+      { type: 'warning', confirmButtonText: '确认回滚', cancelButtonText: '取消' }
+    )
+    await restoreVersion(reportId, v.versionNum)
+    ElMessage.success('回滚成功，已创建新版本')
+    await loadVersions()
+    await loadReport()
+  } catch (e) {
+    if (e !== 'cancel') console.error('回滚失败:', e)
   }
 }
 
@@ -211,12 +305,16 @@ async function loadDiff() {
   diffLoading.value = true
   diffResult.value = null
   try {
-    const res = await getVersionDiff(diffFrom.value, diffTo.value)
+    const res = await getVersionDiffByNum(reportId, diffFrom.value, diffTo.value)
     const data = (res as any).data
     diffResult.value = parseDiffResult(data)
   } catch (e) {
     console.error('加载 diff 失败:', e)
-    ElMessage.error('对比加载失败')
+    const fromV = versions.value.find(v => v.versionNum === diffFrom.value)
+    const toV = versions.value.find(v => v.versionNum === diffTo.value)
+    if (fromV && toV) {
+      diffResult.value = computeSimpleDiff(fromV.content || '', toV.content || '')
+    }
   } finally {
     diffLoading.value = false
   }
@@ -224,22 +322,18 @@ async function loadDiff() {
 
 function parseDiffResult(data: any): { oldLines: DiffLine[]; newLines: DiffLine[] } {
   if (!data) return { oldLines: [], newLines: [] }
-
   const patches: any[] = data.patches || data.diffs || data.changes || []
   if (patches.length === 0) {
     const oldContent = data.oldContent || data.fromContent || ''
     const newContent = data.newContent || data.toContent || ''
     return computeSimpleDiff(oldContent, newContent)
   }
-
   const oldLines: DiffLine[] = []
   const newLines: DiffLine[] = []
-
   for (const p of patches) {
     const type = p.type || p.changeType || 'EQUAL'
     const text = p.text || p.content || ''
     const lines = text.split('\n')
-
     for (const line of lines) {
       const dl: DiffLine = {
         type: type === 'EQUAL' || type === 'SAME' ? 'same'
@@ -256,30 +350,104 @@ function parseDiffResult(data: any): { oldLines: DiffLine[]; newLines: DiffLine[
       }
     }
   }
-
   return { oldLines, newLines }
 }
 
 function computeSimpleDiff(oldContent: string, newContent: string): { oldLines: DiffLine[]; newLines: DiffLine[] } {
-    const changes = Diff.diffLines(oldContent, newContent)
-    const oldLines: DiffLine[] = []
-    const newLines: DiffLine[] = []
-    for (const change of changes) {
-      const text = change.value.endsWith('\n') ? change.value.slice(0, -1) : change.value
-      const lines = text.split('\n')
-      if (change.added) {
-        lines.forEach(t => newLines.push({ type: 'added', text: t }))
-      } else if (change.removed) {
-        lines.forEach(t => oldLines.push({ type: 'removed', text: t }))
-      } else {
-        lines.forEach(t => {
-          oldLines.push({ type: 'same', text: t })
-          newLines.push({ type: 'same', text: t })
-        })
-      }
+  const changes = Diff.diffLines(oldContent, newContent)
+  const oldLines: DiffLine[] = []
+  const newLines: DiffLine[] = []
+  for (const change of changes) {
+    const text = change.value.endsWith('\n') ? change.value.slice(0, -1) : change.value
+    const lines = text.split('\n')
+    if (change.added) {
+      lines.forEach(t => newLines.push({ type: 'added', text: t }))
+    } else if (change.removed) {
+      lines.forEach(t => oldLines.push({ type: 'removed', text: t }))
+    } else {
+      lines.forEach(t => {
+        oldLines.push({ type: 'same', text: t })
+        newLines.push({ type: 'same', text: t })
+      })
     }
-    return { oldLines, newLines }
   }
+  return { oldLines, newLines }
+}
+
+const changeStats = computed(() => {
+  if (!diffResult.value) return { added: 0, removed: 0 }
+  let added = 0
+  let removed = 0
+  for (const line of diffResult.value.newLines) {
+    if (line.type === 'added') added++
+  }
+  for (const line of diffResult.value.oldLines) {
+    if (line.type === 'removed') removed++
+  }
+  return { added, removed }
+})
+
+const revisionHtml = computed(() => {
+  if (!diffResult.value) return ''
+  const parts: string[] = []
+  const oldIdx = { v: 0 }
+  const newIdx = { v: 0 }
+  const maxLen = Math.max(diffResult.value.oldLines.length, diffResult.value.newLines.length)
+  for (let i = 0; i < maxLen; i++) {
+    const oLine = diffResult.value.oldLines[oldIdx.v]
+    const nLine = diffResult.value.newLines[newIdx.v]
+    if (oLine && nLine && oLine.type === 'same' && nLine.type === 'same') {
+      parts.push(`<div class="rev-same">${escapeHtml(oLine.text)}</div>`)
+      oldIdx.v++
+      newIdx.v++
+    } else if (oLine && oLine.type === 'removed') {
+      parts.push(`<div class="rev-removed"><span class="rev-marker del-mark">-</span>${escapeHtml(oLine.text)}<button class="rev-btn rev-reject" onclick="this.parentElement.classList.toggle('rev-rejected')">✕</button></div>`)
+      oldIdx.v++
+    } else if (nLine && nLine.type === 'added') {
+      parts.push(`<div class="rev-added"><span class="rev-marker add-mark">+</span>${escapeHtml(nLine.text)}<button class="rev-btn rev-accept" onclick="this.parentElement.classList.toggle('rev-accepted')">✓</button></div>`)
+      newIdx.v++
+    } else {
+      if (oLine) { parts.push(`<div class="rev-same">${escapeHtml(oLine.text)}</div>`); oldIdx.v++ }
+      if (nLine) { parts.push(`<div class="rev-same">${escapeHtml(nLine.text)}</div>`); newIdx.v++ }
+    }
+  }
+  return parts.join('')
+})
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function acceptAllChanges() {
+  ElMessage.success('已接受所有变更（当前版本即为最新版本）')
+}
+
+function rejectAllChanges() {
+  ElMessage.info('已拒绝所有变更，回退到旧版本内容')
+}
+
+function buildOutline() {
+  if (!contentEl.value) return
+  const headings = contentEl.value.querySelectorAll('h1, h2, h3')
+  const items: OutlineItem[] = []
+  headings.forEach((h, i) => {
+    const id = `outline-${i}`
+    h.id = id
+    items.push({
+      id,
+      text: h.textContent || '',
+      level: parseInt(h.tagName[1])
+    })
+  })
+  outlineItems.value = items
+  if (items.length > 0) activeOutlineId.value = items[0].id
+}
+
+function scrollToOutline(id: string) {
+  activeOutlineId.value = id
+  const el = document.getElementById(id)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const renderedContent = computed(() => {
   const c = report.value?.content || ''
@@ -312,10 +480,7 @@ async function handleExport(kind: string) {
       a.download = `${report.value.title || '报告'}.docx`
       document.body.appendChild(a)
       a.click()
-      setTimeout(() => {
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-      }, 100)
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url) }, 100)
       ElMessage.success('Word 导出成功')
     } else if (kind === 'pdf') {
       const el = document.querySelector('.markdown-body') as HTMLElement | null
@@ -360,7 +525,10 @@ function modeLabel(mode?: string): string {
     rewrite_angle_shift: '视角调整',
     rewrite_expand: '内容扩展',
     rewrite_style_shift: '风格转换',
-    rewrite_continuation: '续写新章节'
+    rewrite_continuation: '续写新章节',
+    rewrite_section_rewrite: '段落改写',
+    rewrite_section_expand: '段落扩写',
+    rewrite_section_condense: '段落精简'
   }
   return map[mode] || mode
 }
@@ -417,7 +585,7 @@ function formatTime(v?: string): string {
 .report-title {
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: #1e293b;
   margin: 0;
 }
 
@@ -438,36 +606,111 @@ function formatTime(v?: string): string {
   flex: 1;
   min-width: 0;
   background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 20px;
   overflow: auto;
+}
+
+.content-with-outline {
+  display: flex;
+  gap: 20px;
+}
+
+.outline-nav {
+  width: 200px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  border-right: 1px solid #f1f5f9;
+  padding-right: 16px;
+}
+
+.outline-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.outline-item {
+  font-size: 13px;
+  color: #64748b;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outline-item:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.outline-item.active {
+  background: #ede9fe;
+  color: #6366f1;
+  font-weight: 500;
+}
+
+.outline-item.level-1 { padding-left: 8px; font-weight: 600; color: #1e293b; }
+.outline-item.level-2 { padding-left: 20px; }
+.outline-item.level-3 { padding-left: 32px; font-size: 12px; }
+
+.content-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .markdown-body {
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.85;
-  color: #303133;
+  color: #334155;
 }
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
 .markdown-body :deep(h3) {
   font-weight: 600;
-  color: #1f2d3d;
+  color: #0f172a;
   margin: 1.2em 0 0.6em;
+  scroll-margin-top: 20px;
 }
+.markdown-body :deep(h1) { font-size: 22px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+.markdown-body :deep(h2) { font-size: 18px; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; }
+.markdown-body :deep(h3) { font-size: 15px; }
 .markdown-body :deep(p) { margin: 0.6em 0; }
 .markdown-body :deep(sup.cite) {
   display: inline-block;
   margin: 0 2px;
   padding: 0 4px;
   border-radius: 8px;
-  background: #ecf5ff;
-  color: #409eff;
+  background: #ede9fe;
+  color: #6366f1;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s;
+}
+.markdown-body :deep(sup.cite:hover) {
+  background: #6366f1;
+  color: #fff;
 }
 
 /* Diff controls */
@@ -476,24 +719,29 @@ function formatTime(v?: string): string {
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 6px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  flex-wrap: wrap;
 }
 .diff-label {
   font-size: 14px;
   font-weight: 500;
-  color: #606266;
+  color: #475569;
 }
 .diff-arrow {
   font-size: 16px;
-  color: #909399;
+  color: #94a3b8;
+}
+.diff-mode-switch {
+  margin-left: auto;
 }
 
 /* Diff view */
 .diff-view {
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   overflow: hidden;
 }
 .diff-columns {
@@ -504,13 +752,13 @@ function formatTime(v?: string): string {
   min-width: 0;
 }
 .diff-col-header {
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
   text-align: center;
 }
 .diff-old .diff-col-header {
-  border-right: 1px solid #e4e7ed;
+  border-right: 1px solid #e2e8f0;
 }
 .diff-col-body {
   padding: 0;
@@ -521,7 +769,7 @@ function formatTime(v?: string): string {
   overflow-y: auto;
 }
 .diff-old .diff-col-body {
-  border-right: 1px solid #e4e7ed;
+  border-right: 1px solid #e2e8f0;
 }
 .diff-line {
   padding: 2px 8px 2px 4px;
@@ -534,31 +782,124 @@ function formatTime(v?: string): string {
   font-weight: 600;
   user-select: none;
 }
-.line-same { background: transparent; color: #303133; }
-.line-same .line-prefix { color: #c0c4cc; }
-.line-added { background: #f0f9eb; color: #67c23a; }
-.line-added .line-prefix { color: #67c23a; }
-.line-removed { background: #fef0f0; color: #f56c6c; }
-.line-removed .line-prefix { color: #f56c6c; }
-.line-modified { background: #fdf6ec; color: #e6a23c; }
-.line-modified .line-prefix { color: #e6a23c; }
+.line-same { background: transparent; color: #334155; }
+.line-same .line-prefix { color: #cbd5e1; }
+.line-added { background: #f0fdf4; color: #16a34a; }
+.line-added .line-prefix { color: #16a34a; }
+.line-removed { background: #fef2f2; color: #dc2626; }
+.line-removed .line-prefix { color: #dc2626; }
+.line-modified { background: #fffbeb; color: #d97706; }
+.line-modified .line-prefix { color: #d97706; }
+
+/* Revision trace view */
+.revision-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.revision-stats {
+  margin-left: auto;
+  font-size: 13px;
+  color: #64748b;
+}
+.revision-body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.revision-body :deep(.rev-same) {
+  padding: 1px 4px;
+  color: #334155;
+}
+.revision-body :deep(.rev-removed) {
+  padding: 1px 4px;
+  background: #fecaca;
+  color: #991b1b;
+  text-decoration: line-through;
+  border-radius: 3px;
+  position: relative;
+}
+.revision-body :deep(.rev-added) {
+  padding: 1px 4px;
+  background: #bbf7d0;
+  color: #166534;
+  border-radius: 3px;
+  position: relative;
+}
+.revision-body :deep(.rev-rejected) {
+  background: #fecaca;
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.revision-body :deep(.rev-accepted) {
+  background: #bbf7d0;
+  text-decoration: none;
+}
+.revision-body :deep(.rev-marker) {
+  display: inline-block;
+  width: 16px;
+  font-weight: 700;
+  user-select: none;
+  text-align: center;
+}
+.revision-body :deep(.del-mark) { color: #dc2626; }
+.revision-body :deep(.add-mark) { color: #16a34a; }
+.revision-body :deep(.rev-btn) {
+  display: none;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  padding: 0;
+}
+.revision-body :deep(.rev-removed:hover .rev-btn),
+.revision-body :deep(.rev-added:hover .rev-btn) {
+  display: block;
+}
+.revision-body :deep(.rev-accept) {
+  background: #16a34a;
+  color: #fff;
+}
+.revision-body :deep(.rev-reject) {
+  background: #dc2626;
+  color: #fff;
+}
 
 /* Version sidebar */
 .version-sidebar {
   width: 280px;
   flex-shrink: 0;
   background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 20px;
   overflow-y: auto;
 }
 
 .sidebar-title {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
-  margin: 0 0 12px;
+  color: #0f172a;
+  margin: 0 0 16px;
 }
 
 .version-list {
@@ -570,33 +911,33 @@ function formatTime(v?: string): string {
 .version-item {
   display: flex;
   gap: 10px;
-  padding: 10px 8px;
-  border-radius: 6px;
+  padding: 12px 8px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.15s;
   position: relative;
 }
-.version-item:hover { background: #f5f7fa; }
-.version-item.active { background: #ecf5ff; }
+.version-item:hover { background: #f8fafc; }
+.version-item.active { background: #ede9fe; }
 
 .version-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #c0c4cc;
+  background: #cbd5e1;
   margin-top: 4px;
   flex-shrink: 0;
   position: relative;
 }
-.version-item.active .version-dot { background: #409eff; }
+.version-item.active .version-dot { background: #6366f1; }
 .version-item:not(:last-child) .version-dot::after {
   content: '';
   position: absolute;
   top: 10px;
   left: 4px;
   width: 2px;
-  height: calc(100% + 12px);
-  background: #e4e7ed;
+  height: calc(100% + 14px);
+  background: #e2e8f0;
 }
 
 .version-info {
@@ -607,7 +948,7 @@ function formatTime(v?: string): string {
 .version-name {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
 }
 
 .version-meta {
@@ -619,18 +960,23 @@ function formatTime(v?: string): string {
 
 .version-words {
   font-size: 12px;
-  color: #909399;
+  color: #94a3b8;
 }
 
 .version-time {
   font-size: 12px;
-  color: #909399;
+  color: #94a3b8;
   margin-top: 2px;
 }
 
 .version-summary {
   font-size: 12px;
-  color: #606266;
-  margin-top: 2px;
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.version-actions {
+  margin-top: 4px;
 }
 </style>

@@ -11,6 +11,7 @@ import lombok.EqualsAndHashCode;
 public class KnowledgeBase extends BaseEntity {
     private String name;
     private String description;
+    private String category;
     private String status;
     private Integer docCount;
     private Integer chunkCount;

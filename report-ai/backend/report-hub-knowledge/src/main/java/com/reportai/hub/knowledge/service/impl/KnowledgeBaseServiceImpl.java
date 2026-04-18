@@ -23,10 +23,11 @@ public class KnowledgeBaseServiceImpl
     private final KnowledgeChunkMapper chunkMapper;
 
     @Override
-    public KnowledgeBase create(String name, String description, Long operatorId) {
+    public KnowledgeBase create(String name, String description, String category, Long operatorId) {
         KnowledgeBase kb = new KnowledgeBase();
         kb.setName(name);
         kb.setDescription(description);
+        kb.setCategory(category != null && !category.isBlank() ? category : "other");
         kb.setStatus("active");
         kb.setDocCount(0);
         kb.setChunkCount(0);
@@ -36,11 +37,13 @@ public class KnowledgeBaseServiceImpl
     }
 
     @Override
-    public Page<KnowledgeBase> listByPage(long current, long size, String keyword) {
+    public Page<KnowledgeBase> listByPage(long current, long size, String keyword, String category) {
         return page(new Page<>(current, size),
                 new LambdaQueryWrapper<KnowledgeBase>()
                         .like(keyword != null && !keyword.isBlank(),
                                 KnowledgeBase::getName, keyword)
+                        .eq(category != null && !category.isBlank(),
+                                KnowledgeBase::getCategory, category)
                         .orderByDesc(KnowledgeBase::getCreatedAt));
     }
 

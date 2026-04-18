@@ -6,10 +6,9 @@ import com.reportai.hub.knowledge.entity.KnowledgeBase;
 
 public interface KnowledgeBaseService extends IService<KnowledgeBase> {
 
-    KnowledgeBase create(String name, String description, Long operatorId);
+    KnowledgeBase create(String name, String description, String category, Long operatorId);
 
-    Page<KnowledgeBase> listByPage(long current, long size, String keyword);
+    Page<KnowledgeBase> listByPage(long current, long size, String keyword, String category);
 
-    /** 文档或 chunk 数量变化后刷新统计字段。 */
     void refreshCounters(Long kbId);
 }

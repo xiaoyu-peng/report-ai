@@ -137,29 +137,29 @@ const statCards = [
     key: 'totalReports' as const,
     label: '报告总数',
     icon: markRaw(Document),
-    color: '#409eff',
-    bg: 'rgba(64, 158, 255, 0.12)'
+    color: '#6366f1',
+    bg: 'rgba(99, 102, 241, 0.1)'
   },
   {
     key: 'totalKnowledgeBases' as const,
     label: '知识库数',
     icon: markRaw(Collection),
-    color: '#67c23a',
-    bg: 'rgba(103, 194, 58, 0.12)'
+    color: '#10b981',
+    bg: 'rgba(16, 185, 129, 0.1)'
   },
   {
     key: 'totalUsers' as const,
     label: '用户总数',
     icon: markRaw(User),
-    color: '#e6a23c',
-    bg: 'rgba(230, 162, 60, 0.12)'
+    color: '#f59e0b',
+    bg: 'rgba(245, 158, 11, 0.1)'
   },
   {
     key: 'todayGenerated' as const,
     label: '今日生成',
     icon: markRaw(TrendCharts),
-    color: '#f56c6c',
-    bg: 'rgba(245, 108, 108, 0.12)'
+    color: '#ef4444',
+    bg: 'rgba(239, 68, 68, 0.1)'
   }
 ]
 
@@ -169,24 +169,24 @@ const quickLinks = [
     label: '写作工作台',
     desc: '开始生成一篇新的报告',
     icon: markRaw(EditPen),
-    color: '#409eff',
-    bg: 'rgba(64, 158, 255, 0.12)'
+    color: '#6366f1',
+    bg: 'rgba(99, 102, 241, 0.1)'
   },
   {
     path: '/knowledge/list',
     label: '知识库',
     desc: '管理参考文档与分块',
     icon: markRaw(Collection),
-    color: '#67c23a',
-    bg: 'rgba(103, 194, 58, 0.12)'
+    color: '#10b981',
+    bg: 'rgba(16, 185, 129, 0.1)'
   },
   {
     path: '/templates',
     label: '模板中心',
     desc: '浏览与上传写作风格模板',
     icon: markRaw(DocumentCopy),
-    color: '#e6a23c',
-    bg: 'rgba(230, 162, 60, 0.12)'
+    color: '#f59e0b',
+    bg: 'rgba(245, 158, 11, 0.1)'
   }
 ]
 
@@ -271,26 +271,28 @@ function formatTime(iso?: string): string {
   gap: 12px;
 }
 .page-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
   margin: 0;
 }
 .page-subtitle {
-  font-size: 13px;
-  color: #909399;
+  font-size: 14px;
+  color: #94a3b8;
 }
 .stat-row {
   margin: 0 !important;
 }
 .stat-card {
-  border-radius: 10px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
   transition: all 0.25s ease;
   margin-bottom: 16px;
 }
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: #c7d2fe;
 }
 .stat-body {
   display: flex;
@@ -315,19 +317,20 @@ function formatTime(iso?: string): string {
 }
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: #94a3b8;
 }
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
   line-height: 1.2;
 }
 .secondary-row {
   margin: 0 !important;
 }
 .panel-card {
-  border-radius: 10px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
   margin-bottom: 16px;
 }
 .panel-header {
@@ -340,7 +343,7 @@ function formatTime(iso?: string): string {
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
 }
 .report-list {
   list-style: none;
@@ -352,7 +355,7 @@ function formatTime(iso?: string): string {
   justify-content: space-between;
   align-items: center;
   padding: 12px 4px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -360,20 +363,20 @@ function formatTime(iso?: string): string {
   border-bottom: none;
 }
 .report-item:hover {
-  background: #f7f9fc;
+  background: #f8fafc;
 }
 .report-title {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: #303133;
+  color: #334155;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .report-icon {
-  color: #409eff;
+  color: #6366f1;
   flex-shrink: 0;
 }
 .report-meta {
@@ -384,7 +387,7 @@ function formatTime(iso?: string): string {
 }
 .report-time {
   font-size: 12px;
-  color: #909399;
+  color: #94a3b8;
 }
 .quick-grid {
   display: flex;
@@ -396,7 +399,7 @@ function formatTime(iso?: string): string {
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #ebeef5;
+  border: 1px solid #e2e8f0;
   border-left: 3px solid;
   border-radius: 8px;
   cursor: pointer;
@@ -424,15 +427,15 @@ function formatTime(iso?: string): string {
 .quick-label {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
 }
 .quick-desc {
   font-size: 12px;
-  color: #909399;
+  color: #94a3b8;
   margin-top: 2px;
 }
 .quick-arrow {
-  color: #c0c4cc;
+  color: #cbd5e1;
   flex-shrink: 0;
 }
 </style>

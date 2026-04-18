@@ -6,9 +6,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.Map;
 
-@Tag(name = "晴天 MCP 舆情数据")
+@Tag(name = "外部数据接入（晴天 MCP + Tavily + Fetch）")
 @RestController
 @RequestMapping("/api/v1/mcp")
 @RequiredArgsConstructor
@@ -16,8 +17,12 @@ public class McpController {
 
     private final SearchMcpService searchService;
     private final SassMcpService sassService;
+    private final TavilyClient tavilyClient;
+    private final FetchClient fetchClient;
 
-    @Operation(summary = "搜索舆情文章")
+    // ========== 晴天信息检索 ==========
+
+    @Operation(summary = "搜索舆情文章（晴天 MCP）")
     @GetMapping("/search/articles")
     public ResponseEntity<JsonNode> searchArticles(
             @RequestParam String keyword,
@@ -27,7 +32,7 @@ public class McpController {
         return ResponseEntity.ok(result);
     }
 
-    @Operation(summary = "获取文章详情")
+    @Operation(summary = "获取文章详情（晴天 MCP）")
     @GetMapping("/search/article/{uuid}")
     public ResponseEntity<JsonNode> getArticleDetail(
             @PathVariable String uuid,
@@ -36,7 +41,7 @@ public class McpController {
         return ResponseEntity.ok(result);
     }
 
-    @Operation(summary = "搜索媒体账号")
+    @Operation(summary = "搜索媒体账号（晴天 MCP）")
     @GetMapping("/search/media-accounts")
     public ResponseEntity<JsonNode> searchMediaAccounts(
             @RequestParam String keyword,
@@ -45,6 +50,8 @@ public class McpController {
         JsonNode result = searchService.searchMediaAccounts(keyword, page, pageSize);
         return ResponseEntity.ok(result);
     }
+
+    // ========== 晴天分析组件 ==========
 
     @Operation(summary = "舆情概览（声量/渠道/情感/关键词）")
     @GetMapping("/analysis/overview")
@@ -127,6 +134,46 @@ public class McpController {
         }
         JsonNode result = sassService.callTool(tool, params);
         return ResponseEntity.ok(result);
+    }
+
+    // ========== Tavily Web 搜索 ==========
+
+    @Operation(summary = "Web 搜索（Tavily）——搜索政策原文/行业报告/技术文档")
+    @GetMapping("/web/search")
+    public ResponseEntity<?> webSearch(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "5") int maxResults) {
+        if (!tavilyClient.isConfigured()) {
+            return ResponseEntity.ok(Map.of("error", "Tavily API Key 未配置", "results", java.util.List.of()));
+        }
+        JsonNode result = tavilyClient.search(query, maxResults);
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "URL 内容提取（Tavily Extract）")
+    @PostMapping("/web/extract")
+    public ResponseEntity<?> webExtract(@RequestBody Map<String, String> body) {
+        String url = body.get("url");
+        if (url == null || url.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "url 参数必填"));
+        }
+        if (!tavilyClient.isConfigured()) {
+            return ResponseEntity.ok(Map.of("error", "Tavily API Key 未配置"));
+        }
+        JsonNode result = tavilyClient.extract(url);
+        return ResponseEntity.ok(result);
+    }
+
+    // ========== Fetch URL 抓取 ==========
+
+    @Operation(summary = "抓取 URL 内容（无需 API Key，直接解析网页）")
+    @GetMapping("/fetch")
+    public ResponseEntity<?> fetchUrl(@RequestParam String url) {
+        String content = fetchClient.fetchUrl(url);
+        if (content == null) {
+            return ResponseEntity.ok(Map.of("error", "抓取失败", "url", url));
+        }
+        return ResponseEntity.ok(Map.of("url", url, "content", content, "length", content.length()));
     }
 
     private static final java.util.Set<String> ALLOWED_TOOLS = java.util.Set.of(

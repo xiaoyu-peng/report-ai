@@ -63,20 +63,91 @@
             </el-select>
           </el-form-item>
 
-          <el-form-item label="外部舆情数据">
-            <el-button
-              size="small"
-              type="success"
-              plain
-              style="width: 100%"
-              :disabled="generating"
-              @click="showMcpDialog = true"
-            >
-              <el-icon><Connection /></el-icon>
-              引入晴天 MCP 数据
-            </el-button>
-            <div v-if="mcpArticles.length > 0" class="mcp-imported-hint">
-              已引入 {{ mcpArticles.length }} 篇舆情文章
+          <el-form-item v-if="form.kbId" label="检索条件">
+            <div class="search-conditions">
+              <div class="condition-row">
+                <span class="condition-label">补充关键词</span>
+                <div class="condition-tags">
+                  <el-tag
+                    v-for="(kw, i) in includeKeywords"
+                    :key="'inc-' + i"
+                    size="small"
+                    closable
+                    @close="includeKeywords.splice(i, 1)"
+                  >{{ kw }}</el-tag>
+                  <el-input
+                    v-if="showIncludeInput"
+                    ref="includeInputRef"
+                    v-model="includeInputVal"
+                    size="small"
+                    style="width: 100px"
+                    @keyup.enter="addIncludeKeyword"
+                    @blur="addIncludeKeyword"
+                  />
+                  <el-button v-else size="small" @click="showIncludeInput = true">+ 添加</el-button>
+                </div>
+              </div>
+              <div class="condition-row">
+                <span class="condition-label">排除关键词</span>
+                <div class="condition-tags">
+                  <el-tag
+                    v-for="(kw, i) in excludeKeywords"
+                    :key="'exc-' + i"
+                    size="small"
+                    type="danger"
+                    closable
+                    @close="excludeKeywords.splice(i, 1)"
+                  >{{ kw }}</el-tag>
+                  <el-input
+                    v-if="showExcludeInput"
+                    ref="excludeInputRef"
+                    v-model="excludeInputVal"
+                    size="small"
+                    style="width: 100px"
+                    @keyup.enter="addExcludeKeyword"
+                    @blur="addExcludeKeyword"
+                  />
+                  <el-button v-else size="small" type="danger" plain @click="showExcludeInput = true">+ 排除</el-button>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="外部数据">
+            <div class="external-data-btns">
+              <el-button
+                size="small"
+                type="success"
+                plain
+                :disabled="generating"
+                @click="showMcpDialog = true"
+              >
+                <el-icon><Connection /></el-icon>
+                晴天舆情
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :disabled="generating"
+                @click="showWebSearchDialog = true"
+              >
+                <el-icon><Search /></el-icon>
+                Web 搜索
+              </el-button>
+              <el-button
+                size="small"
+                type="warning"
+                plain
+                :disabled="generating"
+                @click="showFetchDialog = true"
+              >
+                <el-icon><Link /></el-icon>
+                URL 抓取
+              </el-button>
+            </div>
+            <div v-if="mcpArticles.length > 0 || webSearchResults.length > 0" class="mcp-imported-hint">
+              已引入 {{ mcpArticles.length }} 篇舆情 + {{ webSearchResults.length }} 条 Web 数据
             </div>
           </el-form-item>
 
@@ -93,8 +164,17 @@
                 :key="t.id"
                 :label="t.name"
                 :value="t.id"
-              />
+              >
+                <div class="template-option">
+                  <span class="template-option-name">{{ t.name }}</span>
+                  <span class="template-option-desc">{{ t.description || '' }}</span>
+                </div>
+              </el-option>
             </el-select>
+            <div v-if="selectedTemplateDesc" class="template-hint">
+              <el-icon><InfoFilled /></el-icon>
+              {{ selectedTemplateDesc }}
+            </div>
           </el-form-item>
 
           <el-button
@@ -190,10 +270,20 @@
                     <el-dropdown-item command="ANGLE_SHIFT">视角调整（换观点/受众）</el-dropdown-item>
                     <el-dropdown-item command="EXPAND">内容扩展（补案例/章节）</el-dropdown-item>
                     <el-dropdown-item command="STYLE_SHIFT">风格转换（正式↔通俗）</el-dropdown-item>
-                    <el-dropdown-item command="CONTINUATION" divided>续写新章节（原稿保留）</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
+              <el-button
+                v-if="currentReportId && content"
+                size="small"
+                type="success"
+                plain
+                :disabled="generating || rewriting"
+                @click="handleRewrite('CONTINUATION')"
+              >
+                <el-icon><Promotion /></el-icon>
+                续写
+              </el-button>
             </div>
           </div>
         </template>
@@ -247,15 +337,37 @@
         />
 
         <!-- Editable textarea（非流式时手动编辑） -->
-        <el-input
-          v-if="content && !generating && !rewriting && viewMode === 'edit'"
-          v-model="content"
-          type="textarea"
-          :rows="30"
-          resize="none"
-          class="report-editor"
-          placeholder="报告内容将在此处流式显示..."
-        />
+        <div v-if="content && !generating && !rewriting && viewMode === 'edit'" class="editor-wrapper">
+          <el-input
+            v-model="content"
+            type="textarea"
+            :rows="28"
+            resize="none"
+            class="report-editor"
+            placeholder="报告内容将在此处流式显示..."
+            @keydown="handleEditorKeydown"
+          />
+          <div class="ai-assist-bar">
+            <div class="ai-assist-hint">
+              <el-icon><MagicStick /></el-icon>
+              <span>按 <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 启用 AI 助手</span>
+            </div>
+            <div class="ai-assist-actions">
+              <el-button size="small" type="primary" plain @click="showAiChat = true">
+                <el-icon><ChatDotRound /></el-icon>
+                AI 对话
+              </el-button>
+              <el-button size="small" plain @click="handleTranslate">
+                <el-icon><Switch /></el-icon>
+                中英翻译
+              </el-button>
+              <el-button size="small" plain @click="handleAutoFormat">
+                <el-icon><SetUp /></el-icon>
+                一键排版
+              </el-button>
+            </div>
+          </div>
+        </div>
 
         <!-- Markdown 预览（含 [n] 角标，点击跳转溯源面板，段落级改写） -->
         <div
@@ -269,6 +381,67 @@
         />
       </el-card>
     </div>
+
+    <!-- AI 对话浮窗 -->
+    <el-dialog
+      v-model="showAiChat"
+      title="AI 写作助手"
+      width="520px"
+      top="10vh"
+      :close-on-click-modal="false"
+      class="ai-chat-dialog"
+    >
+      <div class="ai-chat-body">
+        <div class="ai-chat-messages" ref="aiChatMessagesEl">
+          <div v-if="aiChatMessages.length === 0" class="ai-chat-welcome">
+            <el-icon :size="32" color="#6366f1"><MagicStick /></el-icon>
+            <p>我是你的AI写作助手，可以帮你：</p>
+            <div class="ai-chat-suggestions">
+              <el-tag
+                v-for="s in aiSuggestions"
+                :key="s"
+                effect="plain"
+                size="small"
+                class="ai-suggestion-tag"
+                @click="aiChatInput = s"
+              >
+                {{ s }}
+              </el-tag>
+            </div>
+          </div>
+          <div
+            v-for="(msg, i) in aiChatMessages"
+            :key="i"
+            class="ai-chat-msg"
+            :class="msg.role"
+          >
+            <div class="msg-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
+            <div class="msg-content">{{ msg.content }}</div>
+            <el-button
+              v-if="msg.role === 'assistant'"
+              size="small"
+              type="primary"
+              link
+              @click="insertAiResult(msg.content)"
+            >
+              插入到报告
+            </el-button>
+          </div>
+        </div>
+        <div class="ai-chat-input-bar">
+          <el-input
+            v-model="aiChatInput"
+            placeholder="输入你的问题或指令..."
+            @keyup.enter="handleAiChat()"
+            :disabled="aiChatLoading"
+          >
+            <template #append>
+              <el-button @click="handleAiChat()" :loading="aiChatLoading">发送</el-button>
+            </template>
+          </el-input>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- MCP 数据引入弹窗 -->
     <el-dialog v-model="showMcpDialog" title="引入晴天 MCP 舆情数据" width="700px" top="6vh">
@@ -318,6 +491,73 @@
       </template>
     </el-dialog>
 
+    <!-- Web 搜索弹窗（Tavily） -->
+    <el-dialog v-model="showWebSearchDialog" title="Web 搜索（Tavily）" width="700px" top="6vh">
+      <div class="mcp-dialog-body">
+        <el-input
+          v-model="webSearchQuery"
+          placeholder="搜索政策原文、行业报告、技术文档..."
+          @keyup.enter="handleWebSearch"
+        >
+          <template #append>
+            <el-button @click="handleWebSearch" :loading="webSearching">搜索</el-button>
+          </template>
+        </el-input>
+        <div v-if="webSearchResults.length > 0" class="mcp-results">
+          <div class="mcp-results-header">
+            <span>搜索结果（{{ webSearchResults.length }} 条）</span>
+          </div>
+          <div class="mcp-results-list">
+            <div
+              v-for="(item, i) in webSearchResults"
+              :key="i"
+              class="mcp-article-item"
+              :class="{ selected: webSelectedIndices.has(i) }"
+              @click="toggleWebSelect(i)"
+            >
+              <div class="mcp-article-title">{{ item.title || `结果 ${i + 1}` }}</div>
+              <div class="mcp-article-meta">
+                <a v-if="item.url" :href="item.url" target="_blank" class="web-url">{{ item.url }}</a>
+              </div>
+              <div v-if="item.content || item.snippet" class="mcp-article-summary">
+                {{ (item.content || item.snippet || '').substring(0, 200) }}...
+              </div>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else-if="!webSearching" description="输入关键词搜索互联网" :image-size="60" />
+      </div>
+      <template #footer>
+        <el-button @click="showWebSearchDialog = false">取消</el-button>
+        <el-button type="primary" :disabled="webSelectedIndices.size === 0" @click="confirmWebImport">
+          确认引入（{{ webSelectedIndices.size }} 条）
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- URL 抓取弹窗 -->
+    <el-dialog v-model="showFetchDialog" title="URL 内容抓取" width="700px" top="6vh">
+      <div class="mcp-dialog-body">
+        <el-input
+          v-model="fetchUrlInput"
+          placeholder="输入网页 URL，如 https://example.com/report"
+          @keyup.enter="handleFetchUrl"
+        >
+          <template #append>
+            <el-button @click="handleFetchUrl" :loading="fetching">抓取</el-button>
+          </template>
+        </el-input>
+        <div v-if="fetchResult" class="fetch-result">
+          <div class="mcp-results-header">
+            <span>抓取结果（{{ fetchResult.length }} 字符）</span>
+            <el-button size="small" type="primary" @click="confirmFetchImport">引入到知识库</el-button>
+          </div>
+          <div class="fetch-content">{{ fetchResult.substring(0, 1000) }}{{ fetchResult.length > 1000 ? '...' : '' }}</div>
+        </div>
+        <el-empty v-else-if="!fetching" description="输入 URL 抓取网页内容" :image-size="60" />
+      </div>
+    </el-dialog>
+
     <!-- Right: Citation Traceability Panel（仅在有 chunks 时展示） -->
     <div v-if="chunks.length > 0" class="citations-panel">
       <el-card class="citations-card">
@@ -345,7 +585,12 @@
             </div>
             <div class="citation-body">{{ c.content }}</div>
             <div class="citation-foot">
-              相关度 {{ c.score.toFixed(2) }}
+              <div class="citation-score">
+                <div class="score-bar">
+                  <div class="score-fill" :style="{ width: Math.min(c.score * 100, 100) + '%' }"></div>
+                </div>
+                <span class="score-text">相关度 {{ (c.score * 100).toFixed(0) }}%</span>
+              </div>
             </div>
           </div>
         </div>
@@ -371,7 +616,14 @@ import {
   Collection,
   Download,
   Connection,
-  Check
+  Check,
+  Search,
+  Link,
+  InfoFilled,
+  ChatDotRound,
+  Switch,
+  SetUp,
+  Promotion
 } from '@element-plus/icons-vue'
 import { getKnowledgeBases, type KnowledgeBase } from '@/api/knowledge'
 import {
@@ -379,6 +631,8 @@ import {
   createReport,
   updateReport,
   mcpSearchArticles,
+  tavilySearch,
+  fetchUrl as fetchUrlApi,
   type Template,
   type RewriteMode
 } from '@/api/report'
@@ -432,6 +686,39 @@ const mcpSearchResults = ref<any[]>([])
 const mcpSelectedIndices = ref<Set<number>>(new Set())
 const mcpArticles = ref<any[]>([])
 
+const showWebSearchDialog = ref(false)
+const webSearchQuery = ref('')
+const webSearching = ref(false)
+const webSearchResults = ref<any[]>([])
+const webSelectedIndices = ref<Set<number>>(new Set())
+const showFetchDialog = ref(false)
+const fetchUrlInput = ref('')
+const fetching = ref(false)
+const fetchResult = ref<string>('')
+
+const includeKeywords = ref<string[]>([])
+const excludeKeywords = ref<string[]>([])
+const showIncludeInput = ref(false)
+const showExcludeInput = ref(false)
+const includeInputVal = ref('')
+const excludeInputVal = ref('')
+const includeInputRef = ref<InstanceType<typeof import('element-plus')['ElInput']> | null>(null)
+const excludeInputRef = ref<InstanceType<typeof import('element-plus')['ElInput']> | null>(null)
+
+function addIncludeKeyword() {
+  const v = includeInputVal.value.trim()
+  if (v && !includeKeywords.value.includes(v)) includeKeywords.value.push(v)
+  includeInputVal.value = ''
+  showIncludeInput.value = false
+}
+
+function addExcludeKeyword() {
+  const v = excludeInputVal.value.trim()
+  if (v && !excludeKeywords.value.includes(v)) excludeKeywords.value.push(v)
+  excludeInputVal.value = ''
+  showExcludeInput.value = false
+}
+
 // AI 生成进度
 const progressSteps = ['检索知识库', '分析风格与结构', '获取舆情数据', 'AI 撰写报告', '完稿与版本保存']
 const progressStep = ref<{ step: string; stepIndex: number; totalSteps: number } | null>(null)
@@ -450,6 +737,19 @@ const streamingEl = ref<HTMLDivElement | null>(null)
 
 const activeSectionId = ref(-1)
 const sectionRewriting = ref(false)
+const showAiChat = ref(false)
+const aiChatMessages = ref<{ role: string; content: string }[]>([])
+const aiChatInput = ref('')
+const aiChatLoading = ref(false)
+
+const aiSuggestions = [
+  '帮我润色这段文字',
+  '扩写当前章节',
+  '总结报告要点',
+  '生成结论段落',
+  '翻译为英文',
+  '优化报告结构'
+]
 
 // In-flight abort controller for streaming requests
 let activeController: AbortController | null = null
@@ -459,15 +759,22 @@ const canGenerate = computed(
   () => !generating.value && !!form.value.title.trim() && !!form.value.topic.trim()
 )
 
+const selectedTemplateDesc = computed(() => {
+  if (!form.value.templateId) return ''
+  const t = templates.value.find(t => t.id === form.value.templateId)
+  return t?.description || ''
+})
+
 onMounted(async () => {
   try {
     const [kbRes, tmplRes] = await Promise.all([
       getKnowledgeBases(),
       getTemplates()
     ])
-    // request interceptor returns the ApiResponse directly, so `.data` is the payload
-    knowledgeBases.value = ((kbRes as any).data as KnowledgeBase[]) || []
-    templates.value = ((tmplRes as any).data as Template[]) || []
+    const kbRaw = (kbRes as any).data
+    knowledgeBases.value = Array.isArray(kbRaw) ? kbRaw : Array.isArray(kbRaw?.records) ? kbRaw.records : []
+    const tmplRaw = (tmplRes as any).data
+    templates.value = Array.isArray(tmplRaw) ? tmplRaw : Array.isArray(tmplRaw?.records) ? tmplRaw.records : []
   } catch (e) {
     console.error('加载知识库/模板失败:', e)
   }
@@ -883,6 +1190,65 @@ function confirmMcpImport() {
   ElMessage.success(`已引入 ${articles.length} 篇舆情文章`)
 }
 
+async function handleWebSearch() {
+  if (!webSearchQuery.value.trim()) return
+  webSearching.value = true
+  webSearchResults.value = []
+  webSelectedIndices.value = new Set()
+  try {
+    const res = await tavilySearch(webSearchQuery.value.trim(), 10)
+    const data = (res as any).data
+    if (data?.results && Array.isArray(data.results)) {
+      webSearchResults.value = data.results
+    } else if (Array.isArray(data)) {
+      webSearchResults.value = data
+    }
+  } catch (e) {
+    console.error('Web 搜索失败:', e)
+    ElMessage.error('Web 搜索失败')
+  } finally {
+    webSearching.value = false
+  }
+}
+
+function toggleWebSelect(index: number) {
+  const newSet = new Set(webSelectedIndices.value)
+  if (newSet.has(index)) newSet.delete(index)
+  else newSet.add(index)
+  webSelectedIndices.value = newSet
+}
+
+function confirmWebImport() {
+  const selected = webSelectedIndices.value
+  const items = Array.from(selected).map(i => webSearchResults.value[i])
+  mcpArticles.value = [...mcpArticles.value, ...items]
+  showWebSearchDialog.value = false
+  ElMessage.success(`已引入 ${items.length} 条 Web 搜索结果`)
+}
+
+async function handleFetchUrl() {
+  if (!fetchUrlInput.value.trim()) return
+  fetching.value = true
+  fetchResult.value = ''
+  try {
+    const res = await fetchUrlApi(fetchUrlInput.value.trim())
+    const data = (res as any).data
+    fetchResult.value = data?.content || data?.text || ''
+  } catch (e) {
+    console.error('URL 抓取失败:', e)
+    ElMessage.error('URL 抓取失败')
+  } finally {
+    fetching.value = false
+  }
+}
+
+function confirmFetchImport() {
+  if (!fetchResult.value) return
+  mcpArticles.value = [...mcpArticles.value, { title: fetchUrlInput.value, content: fetchResult.value, source: 'fetch' }]
+  showFetchDialog.value = false
+  ElMessage.success('已引入 URL 内容')
+}
+
 function handleSectionHover(e: MouseEvent) {
   const target = e.target as HTMLElement | null
   if (!target) return
@@ -982,6 +1348,74 @@ async function saveReport() {
   } finally {
     saving.value = false
   }
+}
+
+function handleEditorKeydown(e: KeyboardEvent | Event) {
+  if (e instanceof KeyboardEvent && e.ctrlKey && e.key === 'Enter') {
+    e.preventDefault()
+    showAiChat.value = true
+  }
+}
+
+function handleTranslate() {
+  if (!content.value) return
+  ElMessage.info('正在翻译报告内容...')
+  const isChinese = /[\u4e00-\u9fa5]/.test(content.value.substring(0, 200))
+  const prompt = isChinese
+    ? `请将以下中文报告翻译为英文，保持Markdown格式和引用角标不变：\n\n${content.value}`
+    : `请将以下英文报告翻译为中文，保持Markdown格式和引用角标不变：\n\n${content.value}`
+  handleAiChat(prompt)
+}
+
+function handleAutoFormat() {
+  if (!content.value) return
+  let formatted = content.value
+  formatted = formatted.replace(/\n{3,}/g, '\n\n')
+  formatted = formatted.replace(/^##\s*/gm, '## ')
+  formatted = formatted.replace(/^###\s*/gm, '### ')
+  formatted = formatted.replace(/^(?!#)\s{2,}/gm, '')
+  formatted = formatted.trim() + '\n'
+  content.value = formatted
+  ElMessage.success('排版完成')
+}
+
+async function handleAiChat(userInput?: string) {
+  const input = userInput || aiChatInput.value.trim()
+  if (!input) return
+  aiChatMessages.value.push({ role: 'user', content: input })
+  if (!userInput) aiChatInput.value = ''
+  aiChatLoading.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const res = await fetch('/api/v1/reports/ai-chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        messages: aiChatMessages.value,
+        context: content.value.substring(0, 3000)
+      })
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const reply = data?.data?.content || data?.data || 'AI 暂时无法回复，请稍后再试'
+      aiChatMessages.value.push({ role: 'assistant', content: reply })
+    } else {
+      aiChatMessages.value.push({ role: 'assistant', content: 'AI 助手暂时不可用，请检查后端服务是否正常。' })
+    }
+  } catch (e) {
+    aiChatMessages.value.push({ role: 'assistant', content: '网络请求失败，请检查后端服务。' })
+  } finally {
+    aiChatLoading.value = false
+  }
+}
+
+function insertAiResult(text: string) {
+  content.value += '\n\n' + text
+  showAiChat.value = false
+  ElMessage.success('内容已插入')
 }
 
 async function copyContent() {
@@ -1123,7 +1557,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
 }
 .editor-actions {
   display: flex;
@@ -1141,7 +1575,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  color: #409eff;
+  color: #6366f1;
   font-size: 14px;
 }
 .report-editor {
@@ -1159,7 +1593,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.85;
-  color: #303133;
+  color: #0f172a;
   padding: 4px 8px 24px;
   min-height: 600px;
   overflow-wrap: break-word;
@@ -1171,7 +1605,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 /* 打字光标闪烁动画 */
 .streaming-editor :deep(.typing-cursor) {
   display: inline;
-  color: #409eff;
+  color: #6366f1;
   font-weight: 400;
   animation: cursor-blink 0.8s step-end infinite;
 }
@@ -1187,7 +1621,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 .streaming-editor :deep(h2),
 .streaming-editor :deep(h3) {
   font-weight: 600;
-  color: #1f2d3d;
+  color: #0f172a;
   margin: 1.2em 0 0.6em;
 }
 .report-preview :deep(p),
@@ -1209,8 +1643,8 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   margin: 0 2px;
   padding: 0 4px;
   border-radius: 8px;
-  background: #ecf5ff;
-  color: #409eff;
+  background: #ede9fe;
+  color: #6366f1;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -1219,7 +1653,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 .report-preview :deep(sup.cite:hover),
 .streaming-editor :deep(sup.cite:hover) {
-  background: #409eff;
+  background: #6366f1;
   color: #fff;
 }
 
@@ -1244,40 +1678,41 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   gap: 10px;
 }
 .citation-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: #fafbfc;
-  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+  transition: all 0.3s;
 }
 .citation-card.highlighted {
-  background: #ecf5ff;
-  border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+  background: #ede9fe;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 .citation-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   font-size: 12px;
 }
 .citation-idx {
-  color: #409eff;
+  color: #6366f1;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
 }
 .citation-file {
   flex: 1;
-  color: #606266;
+  color: #475569;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .citation-body {
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.7;
-  color: #4a4a4a;
+  color: #334155;
   max-height: 8.5em;
   overflow: hidden;
   display: -webkit-box;
@@ -1285,17 +1720,203 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   -webkit-box-orient: vertical;
 }
 .citation-foot {
-  margin-top: 6px;
+  margin-top: 8px;
+}
+.citation-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.score-bar {
+  flex: 1;
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.score-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.score-text {
   font-size: 11px;
-  color: #909399;
-  text-align: right;
+  color: #64748b;
+  white-space: nowrap;
 }
 
 /* MCP 引入相关 */
 .mcp-imported-hint {
   font-size: 12px;
-  color: #67c23a;
+  color: #10b981;
   margin-top: 4px;
+}
+.external-data-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.external-data-btns .el-button {
+  flex: 1;
+}
+.template-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.template-option-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+}
+.template-option-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.template-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: #f5f3ff;
+  border-radius: 6px;
+  border-left: 3px solid #6366f1;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+}
+.web-url {
+  font-size: 11px;
+  color: #6366f1;
+  text-decoration: none;
+  word-break: break-all;
+}
+.web-url:hover {
+  text-decoration: underline;
+}
+.editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.editor-wrapper .report-editor {
+  flex: 1;
+}
+.ai-assist-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  border-radius: 0 0 8px 8px;
+}
+.ai-assist-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.ai-assist-hint kbd {
+  padding: 1px 5px;
+  font-size: 11px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  border: 1px solid #cbd5e1;
+  font-family: inherit;
+}
+.ai-assist-actions {
+  display: flex;
+  gap: 6px;
+}
+.ai-chat-body {
+  display: flex;
+  flex-direction: column;
+  height: 420px;
+}
+.ai-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.ai-chat-welcome {
+  text-align: center;
+  padding: 30px 20px;
+  color: #64748b;
+}
+.ai-chat-welcome p {
+  margin: 12px 0;
+  font-size: 14px;
+}
+.ai-chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.ai-suggestion-tag {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-suggestion-tag:hover {
+  background: #ede9fe;
+  color: #6366f1;
+  border-color: #6366f1;
+}
+.ai-chat-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.ai-chat-msg.user {
+  background: #ede9fe;
+}
+.ai-chat-msg.assistant {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+.msg-avatar {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+.msg-content {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #334155;
+  white-space: pre-wrap;
+}
+.ai-chat-input-bar {
+  flex-shrink: 0;
+}
+.fetch-result {
+  margin-top: 16px;
+}
+.fetch-content {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #0f172a;
+  max-height: 300px;
+  overflow-y: auto;
 }
 .mcp-dialog-body {
   min-height: 300px;
@@ -1309,7 +1930,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   align-items: center;
   margin-bottom: 10px;
   font-size: 13px;
-  color: #606266;
+  color: #475569;
 }
 .mcp-results-list {
   max-height: 400px;
@@ -1319,35 +1940,35 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   gap: 8px;
 }
 .mcp-article-item {
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
 .mcp-article-item:hover {
-  border-color: #409eff;
+  border-color: #6366f1;
 }
 .mcp-article-item.selected {
-  border-color: #409eff;
-  background: #ecf5ff;
+  border-color: #6366f1;
+  background: #ede9fe;
 }
 .mcp-article-title {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: #0f172a;
   margin-bottom: 4px;
 }
 .mcp-article-meta {
   display: flex;
   gap: 12px;
   font-size: 12px;
-  color: #909399;
+  color: #94a3b8;
   margin-bottom: 4px;
 }
 .mcp-article-summary {
   font-size: 12px;
-  color: #606266;
+  color: #475569;
   line-height: 1.6;
 }
 
@@ -1355,9 +1976,9 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 .progress-bar {
   margin-bottom: 12px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, #f0f9ff 0%, #ecf5ff 100%);
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
   border-radius: 8px;
-  border: 1px solid #d9ecff;
+  border: 1px solid #ddd6fe;
 }
 .progress-steps {
   display: flex;
@@ -1380,30 +2001,30 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  background: #e4e7ed;
-  color: #909399;
+  background: #e2e8f0;
+  color: #94a3b8;
   transition: all 0.3s;
 }
 .progress-step.done .step-dot {
-  background: #67c23a;
+  background: #10b981;
   color: #fff;
 }
 .progress-step.active .step-dot {
-  background: #409eff;
+  background: #6366f1;
   color: #fff;
-  box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.2);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
 }
 .step-label {
   font-size: 11px;
-  color: #909399;
+  color: #94a3b8;
   white-space: nowrap;
 }
 .progress-step.active .step-label {
-  color: #409eff;
+  color: #6366f1;
   font-weight: 600;
 }
 .progress-step.done .step-label {
-  color: #67c23a;
+  color: #10b981;
 }
 
 /* 段落级改写 */
@@ -1414,7 +2035,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   transition: background 0.15s;
 }
 .section-editable :deep(.section-block:hover) {
-  background: rgba(64, 158, 255, 0.04);
+  background: rgba(99, 102, 241, 0.04);
 }
 .section-editable :deep(.section-block:hover::after) {
   content: '';
@@ -1439,16 +2060,40 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   padding: 2px 8px;
   font-size: 11px;
   border-radius: 4px;
-  border: 1px solid #d9ecff;
-  background: #ecf5ff;
-  color: #409eff;
+  border: 1px solid #ddd6fe;
+  background: #ede9fe;
+  color: #6366f1;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
 }
 .section-action-btn:hover {
-  background: #409eff;
+  background: #6366f1;
   color: #fff;
-  border-color: #409eff;
+  border-color: #6366f1;
+}
+
+.search-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.condition-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.condition-label {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+  min-width: 70px;
+  padding-top: 4px;
+}
+.condition-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
 }
 </style>

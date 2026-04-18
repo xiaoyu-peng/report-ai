@@ -67,6 +67,7 @@ services:
       DOUBAO_MODEL: ${DOUBAO_MODEL:-doubao-seed-2-0-lite-260215}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       QINGTIAN_MCP_APPKEY: ${QINGTIAN_MCP_APPKEY:-OOn05z7m}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     depends_on:
       mysql:
         condition: service_healthy

@@ -75,6 +75,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } else {
+                if (!isPermitAllPath(path)) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"code\":401,\"msg\":\"未登录或Token已过期\",\"data\":null}");
+                    return;
+                }
                 AnonymousAuthenticationToken anonymousToken = new AnonymousAuthenticationToken(
                     "key", "anonymousUser", Collections.singletonList(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))
                 );
@@ -93,5 +99,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return bearerToken.substring(BEARER_PREFIX.length());
         }
         return null;
+    }
+
+    private boolean isPermitAllPath(String path) {
+        return path.startsWith("/api/v1/login")
+            || path.startsWith("/api/v1/logout")
+            || path.startsWith("/api/v1/runtime/")
+            || path.startsWith("/api/v1/init/")
+            || path.startsWith("/swagger-ui/")
+            || path.startsWith("/v3/api-docs/")
+            || path.startsWith("/actuator/health");
     }
 }

@@ -429,7 +429,7 @@ onMounted(() => {
 
   .resource-name {
     font-weight: 500;
-    color: #303133;
+    color: #0f172a;
   }
 }
 </style>

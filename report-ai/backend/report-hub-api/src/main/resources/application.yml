@@ -69,6 +69,10 @@ qingtian:
     connect-timeout: 5
     read-timeout: 30
 
+tavily:
+  api-key: ${TAVILY_API_KEY:}
+  base-url: ${TAVILY_BASE_URL:https://api.tavily.com}
+
 logging:
   level:
     com.reportai.hub: debug

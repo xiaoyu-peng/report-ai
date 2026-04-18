@@ -27,18 +27,39 @@ public class RagSearchServiceImpl implements RagSearchService {
 
     /** BOOLEAN MODE 保留字符，需要从用户 query 中剔除。 */
     private static final Pattern BOOLEAN_RESERVED =
-            Pattern.compile("[+\\-><()~*\"@]");
+            Pattern.compile("[+><()~*\"@]");
 
     @Override
     public RagSearchResponse search(Long kbId, String query, int topK) {
+        return search(kbId, query, topK, null, null);
+    }
+
+    @Override
+    public RagSearchResponse search(Long kbId, String query, int topK, String includeKeywords, String excludeKeywords) {
         int k = Math.max(1, Math.min(topK, 50));
-        List<RagChunkHit> hits = searchRaw(kbId, query, k);
+        String combinedQuery = buildCombinedQuery(query, includeKeywords, excludeKeywords);
+        List<RagChunkHit> hits = searchRaw(kbId, combinedQuery, k);
         RagSearchResponse resp = new RagSearchResponse();
         resp.setKbId(kbId);
         resp.setQuery(query);
         resp.setTopK(k);
         resp.setHits(hits);
         return resp;
+    }
+
+    private String buildCombinedQuery(String query, String includeKeywords, String excludeKeywords) {
+        StringBuilder combined = new StringBuilder(query);
+        if (includeKeywords != null && !includeKeywords.isBlank()) {
+            combined.append(" ").append(includeKeywords);
+        }
+        if (excludeKeywords != null && !excludeKeywords.isBlank()) {
+            for (String word : excludeKeywords.split("[,，\\s]+")) {
+                if (!word.isBlank()) {
+                    combined.append(" -").append(word);
+                }
+            }
+        }
+        return combined.toString();
     }
 
     @Override
@@ -82,11 +103,12 @@ public class RagSearchServiceImpl implements RagSearchService {
      */
     private String toBooleanModeExpression(String raw) {
         String cleaned = BOOLEAN_RESERVED.matcher(raw).replaceAll(" ");
-        // 把 CJK 字符两侧补空格，每个汉字单独成 token
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < cleaned.length(); i++) {
             char ch = cleaned.charAt(i);
-            if (isCjk(ch)) {
+            if (ch == '-' && i + 1 < cleaned.length() && !Character.isWhitespace(cleaned.charAt(i + 1))) {
+                sb.append(' ').append('-');
+            } else if (isCjk(ch)) {
                 sb.append(' ').append(ch).append(' ');
             } else {
                 sb.append(ch);
@@ -95,7 +117,10 @@ public class RagSearchServiceImpl implements RagSearchService {
         String split = sb.toString();
         return Arrays.stream(split.split("\\s+"))
                 .filter(s -> !s.isBlank())
-                .map(s -> "+" + s)
+                .map(s -> {
+                    if (s.startsWith("-")) return s;
+                    return "+" + s;
+                })
                 .collect(Collectors.joining(" "));
     }
 

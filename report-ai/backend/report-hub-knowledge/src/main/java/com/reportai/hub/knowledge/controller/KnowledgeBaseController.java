@@ -31,8 +31,9 @@ public class KnowledgeBaseController {
     public Result<PageResult<KnowledgeBase>> list(
             @RequestParam(defaultValue = "1") @Min(1) Long current,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) Long size,
-            @RequestParam(required = false) String keyword) {
-        Page<KnowledgeBase> page = baseService.listByPage(current, size, keyword);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String category) {
+        Page<KnowledgeBase> page = baseService.listByPage(current, size, keyword, category);
         return Result.success(PageResult.of(
                 page.getRecords(), page.getTotal(), page.getSize(), page.getCurrent()));
     }
@@ -41,7 +42,7 @@ public class KnowledgeBaseController {
     @PostMapping
     public Result<KnowledgeBase> create(@Valid @RequestBody KnowledgeBaseCreateDTO dto) {
         KnowledgeBase kb = baseService.create(dto.getName(), dto.getDescription(),
-                UserContext.getUserId());
+                dto.getCategory(), UserContext.getUserId());
         return Result.success(kb);
     }
 
@@ -59,6 +60,7 @@ public class KnowledgeBaseController {
         if (kb == null) return Result.error("知识库不存在");
         kb.setName(dto.getName());
         kb.setDescription(dto.getDescription());
+        if (dto.getCategory() != null) kb.setCategory(dto.getCategory());
         baseService.updateById(kb);
         return Result.success();
     }

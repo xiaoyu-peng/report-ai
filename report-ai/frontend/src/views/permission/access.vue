@@ -467,14 +467,14 @@ onMounted(async () => {
     .page-title {
       font-size: 28px;
       font-weight: 700;
-      color: #1f2d3d;
+      color: #0f172a;
       margin: 0 0 8px;
       letter-spacing: -0.5px;
     }
     
     .page-subtitle {
       font-size: 14px;
-      color: #8c929a;
+      color: #94a3b8;
       font-weight: 500;
     }
   }
@@ -511,27 +511,27 @@ onMounted(async () => {
         flex-shrink: 0;
         
         &.public {
-          background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+          background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
           color: #fff;
-          box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
         
         &.department {
-          background: linear-gradient(135deg, #e6a23c 0%, #ebb563 100%);
+          background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
           color: #fff;
-          box-shadow: 0 4px 12px rgba(230, 162, 60, 0.3);
+          box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
         }
         
         &.personal {
-          background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+          background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
           color: #fff;
-          box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
         }
         
         &.applications {
-          background: linear-gradient(135deg, #909399 0%, #b4b4b4 100%);
+          background: linear-gradient(135deg, #64748b 0%, #94a3b8 100%);
           color: #fff;
-          box-shadow: 0 4px 12px rgba(144, 147, 153, 0.3);
+          box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
         }
       }
       
@@ -541,13 +541,13 @@ onMounted(async () => {
         .stat-value {
           font-size: 28px;
           font-weight: 700;
-          color: #1f2d3d;
+          color: #0f172a;
           line-height: 1.2;
         }
         
         .stat-label {
           font-size: 13px;
-          color: #8c929a;
+          color: #94a3b8;
           font-weight: 500;
           margin-top: 4px;
         }
@@ -572,7 +572,7 @@ onMounted(async () => {
       }
 
       &.is-focus {
-        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
       }
     }
 
@@ -598,7 +598,7 @@ onMounted(async () => {
         .group-title {
           font-size: 18px;
           font-weight: 700;
-          color: #1f2d3d;
+          color: #0f2d3d;
           display: flex;
           align-items: center;
           gap: 10px;
@@ -607,15 +607,15 @@ onMounted(async () => {
             font-size: 20px;
             
             &.public {
-              color: #67c23a;
+              color: #10b981;
             }
             
             &.department {
-              color: #e6a23c;
+              color: #f59e0b;
             }
             
             &.personal {
-              color: #409eff;
+              color: #6366f1;
             }
           }
         }
@@ -639,26 +639,26 @@ onMounted(async () => {
     }
     
     &.public {
-      border-color: rgba(103, 194, 58, 0.2);
+      border-color: rgba(16, 185, 129, 0.2);
       
       &:hover {
-        border-color: rgba(103, 194, 58, 0.4);
+        border-color: rgba(16, 185, 129, 0.4);
       }
     }
     
     &.department {
-      border-color: rgba(230, 162, 60, 0.2);
+      border-color: rgba(245, 158, 11, 0.2);
       
       &:hover {
-        border-color: rgba(230, 162, 60, 0.4);
+        border-color: rgba(245, 158, 11, 0.4);
       }
     }
     
     &.personal {
-      border-color: rgba(64, 158, 255, 0.2);
+      border-color: rgba(99, 102, 241, 0.2);
       
       &:hover {
-        border-color: rgba(64, 158, 255, 0.4);
+        border-color: rgba(99, 102, 241, 0.4);
       }
     }
 
@@ -672,13 +672,13 @@ onMounted(async () => {
         width: 40px;
         height: 40px;
         border-radius: 10px;
-        background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
         font-size: 20px;
-        box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
       }
 
       .skill-type {
@@ -689,13 +689,13 @@ onMounted(async () => {
         letter-spacing: 0.3px;
 
         &.skill {
-          background: rgba(64, 158, 255, 0.12);
-          color: #409eff;
+          background: rgba(99, 102, 241, 0.12);
+          color: #6366f1;
         }
 
         &.mcp {
-          background: rgba(103, 194, 58, 0.12);
-          color: #67c23a;
+          background: rgba(16, 185, 129, 0.12);
+          color: #10b981;
         }
       }
     }
@@ -703,14 +703,14 @@ onMounted(async () => {
     .skill-name {
       font-size: 16px;
       font-weight: 700;
-      color: #1f2d3d;
+      color: #0f172a;
       margin-bottom: 8px;
       letter-spacing: -0.2px;
     }
 
     .skill-desc {
       font-size: 13px;
-      color: #5a5e66;
+      color: #475569;
       margin-bottom: 16px;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -728,7 +728,7 @@ onMounted(async () => {
       .skill-meta {
         .skill-dept {
           font-size: 12px;
-          color: #8c929a;
+          color: #94a3b8;
           font-weight: 500;
         }
       }
@@ -770,7 +770,7 @@ onMounted(async () => {
         font-size: 18px;
         font-weight: 700;
         margin: 0;
-        color: #1f2d3d;
+        color: #0f172a;
         letter-spacing: -0.3px;
       }
     }
@@ -812,13 +812,13 @@ onMounted(async () => {
           .application-skill {
             font-size: 14px;
             font-weight: 600;
-            color: #1f2d3d;
+            color: #0f172a;
           }
         }
 
         .application-time {
           font-size: 12px;
-          color: #8c929a;
+          color: #94a3b8;
           display: flex;
           align-items: center;
           gap: 4px;
@@ -826,10 +826,10 @@ onMounted(async () => {
 
         .application-reason {
           font-size: 12px;
-          color: #f56c6c;
+          color: #ef4444;
           margin-top: 8px;
           padding: 8px 12px;
-          background: rgba(245, 108, 108, 0.08);
+          background: rgba(239, 68, 68, 0.08);
           border-radius: 6px;
           display: flex;
           align-items: flex-start;
@@ -857,7 +857,7 @@ onMounted(async () => {
         .el-dialog__title {
           font-size: 18px;
           font-weight: 700;
-          color: #1f2d3d;
+          color: #0f172a;
         }
       }
 
@@ -873,7 +873,7 @@ onMounted(async () => {
 
     .el-form-item__label {
       font-weight: 600;
-      color: #5a5e66;
+      color: #475569;
     }
 
     .el-textarea__inner {
@@ -886,7 +886,7 @@ onMounted(async () => {
       }
 
       &:focus {
-        box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
       }
     }
   }

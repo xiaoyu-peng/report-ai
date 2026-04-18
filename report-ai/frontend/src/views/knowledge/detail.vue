@@ -12,6 +12,7 @@
         :show-file-list="false"
         :before-upload="handleUpload"
         accept=".pdf,.doc,.docx,.txt,.md"
+        multiple
       >
         <el-button type="primary">
           <el-icon><Upload /></el-icon>
@@ -133,7 +134,8 @@ onMounted(async () => {
 async function loadKb() {
   try {
     const res = await getKnowledgeBases()
-    const bases = (res.data as KnowledgeBase[]) || []
+    const raw = (res as any).data
+    const bases: KnowledgeBase[] = Array.isArray(raw) ? raw : Array.isArray(raw?.records) ? raw.records : []
     kb.value = bases.find((b) => Number(b.id) === kbId) || null
   } catch (e) {
     console.error('加载知识库信息失败:', e)
@@ -144,7 +146,8 @@ async function loadDocuments() {
   loading.value = true
   try {
     const res = await getDocuments(kbId)
-    documents.value = (res.data as KnowledgeDocument[]) || []
+    const raw = (res as any).data
+    documents.value = Array.isArray(raw) ? raw : Array.isArray(raw?.records) ? raw.records : []
   } catch (e) {
     console.error('加载文档列表失败:', e)
   } finally {
@@ -240,22 +243,23 @@ function clearSearch() {
 .kb-title {
   font-size: 18px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
 }
 .kb-desc-bar {
-  background: #f5f7fa;
-  border-left: 3px solid #409eff;
+  background: #f5f3ff;
+  border-left: 3px solid #6366f1;
   padding: 10px 14px;
-  color: #606266;
+  color: #475569;
   font-size: 13px;
   border-radius: 4px;
   margin-bottom: 16px;
 }
 .table-card {
-  border-radius: 8px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
 }
 .file-icon {
-  color: #409eff;
+  color: #6366f1;
   margin-right: 6px;
   vertical-align: middle;
 }
@@ -271,7 +275,7 @@ function clearSearch() {
   align-items: center;
   margin-bottom: 10px;
   font-size: 13px;
-  color: #606266;
+  color: #475569;
 }
 .results-list {
   display: flex;
@@ -279,10 +283,10 @@ function clearSearch() {
   gap: 8px;
 }
 .result-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: #fafbfc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
 }
 .result-head {
   display: flex;
@@ -292,20 +296,20 @@ function clearSearch() {
   font-size: 12px;
 }
 .result-idx {
-  color: #409eff;
+  color: #6366f1;
   font-weight: 700;
 }
 .result-file {
-  color: #606266;
+  color: #475569;
   flex: 1;
 }
 .result-score {
-  color: #909399;
+  color: #94a3b8;
   font-size: 11px;
 }
 .result-body {
   font-size: 13px;
   line-height: 1.7;
-  color: #303133;
+  color: #334155;
 }
 </style>

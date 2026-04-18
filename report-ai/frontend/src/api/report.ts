@@ -97,6 +97,12 @@ export const getReportVersions = (reportId: number) =>
 export const getVersionDiff = (v1: number, v2: number) =>
   request.get(`/v1/reports/versions/diff`, { params: { from: v1, to: v2 } })
 
+export const restoreVersion = (reportId: number, versionNum: number) =>
+  request.post(`/v1/reports/${reportId}/versions/${versionNum}/restore`)
+
+export const getVersionDiffByNum = (reportId: number, fromVersion: number, toVersion: number) =>
+  request.get(`/v1/reports/${reportId}/versions/${fromVersion}/diff/${toVersion}`)
+
 // Export
 export const exportDocx = (reportId: number) =>
   request.get(`/v1/export/report/${reportId}/docx`, { responseType: 'blob' })
@@ -133,3 +139,14 @@ export const mcpDatasourceSound = (topic: string, startDate?: string, endDate?: 
 
 export const mcpHotWords = (topic: string, startDate?: string, endDate?: string) =>
   request.get('/v1/mcp/analysis/hot-words', { params: { topic, startDate, endDate } })
+
+// Tavily Web 搜索
+export const tavilySearch = (query: string, maxResults = 5) =>
+  request.get('/v1/mcp/web/search', { params: { query, maxResults } })
+
+export const tavilyExtract = (url: string) =>
+  request.post('/v1/mcp/web/extract', { url })
+
+// Fetch URL 抓取
+export const fetchUrl = (url: string) =>
+  request.get('/v1/mcp/fetch', { params: { url } })

@@ -385,24 +385,24 @@ onMounted(() => {
   }
 
   .dept-icon {
-    color: #909399;
+    color: #94a3b8;
     font-size: 16px;
     transition: all 0.2s ease;
 
     &.is-parent {
-      color: #409eff;
+      color: #6366f1;
       font-size: 18px;
     }
   }
 
   .dept-name {
     font-weight: 500;
-    color: #606266;
+    color: #475569;
     transition: all 0.2s ease;
 
     &.is-parent {
       font-weight: 600;
-      color: #303133;
+      color: #0f172a;
     }
   }
 
@@ -412,12 +412,12 @@ onMounted(() => {
   }
 
   .dept-desc {
-    color: #909399;
+    color: #94a3b8;
   }
 
   .resource-name {
     font-weight: 500;
-    color: #303133;
+    color: #0f172a;
   }
 
   :deep(.el-table) {

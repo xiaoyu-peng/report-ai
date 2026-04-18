@@ -12,4 +12,7 @@ public class KnowledgeBaseCreateDTO {
 
     @Size(max = 500)
     private String description;
+
+    @Size(max = 32)
+    private String category;
 }

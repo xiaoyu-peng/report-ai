@@ -7,7 +7,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("operation_logs")
+@TableName("sys_operation_log")
 public class OperationLog implements Serializable {
 
     private static final long serialVersionUID = 1L;

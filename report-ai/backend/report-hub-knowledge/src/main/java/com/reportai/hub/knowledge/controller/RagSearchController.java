@@ -30,7 +30,9 @@ public class RagSearchController {
     public Result<RagSearchResponse> search(
             @NotNull @RequestParam Long kbId,
             @NotBlank @RequestParam String q,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int topK) {
-        return Result.success(ragSearchService.search(kbId, q, topK));
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int topK,
+            @RequestParam(required = false) String includeKeywords,
+            @RequestParam(required = false) String excludeKeywords) {
+        return Result.success(ragSearchService.search(kbId, q, topK, includeKeywords, excludeKeywords));
     }
 }

@@ -24,13 +24,31 @@
       <el-col v-for="tpl in list" :key="tpl.id" :span="8">
         <el-card class="tpl-card" shadow="hover">
           <div class="tpl-header">
-            <div class="tpl-icon">
-              <el-icon><DocumentCopy /></el-icon>
+            <div class="tpl-icon" :style="{ background: getTplColor(tpl.id).bg, color: getTplColor(tpl.id).fg }">
+              <el-icon :size="22"><DocumentCopy /></el-icon>
             </div>
             <el-tag v-if="tpl.isBuiltin" type="warning" size="small" effect="light">内置</el-tag>
           </div>
           <div class="tpl-name">{{ tpl.name }}</div>
           <div class="tpl-desc">{{ tpl.description || '暂无描述' }}</div>
+          <div class="tpl-style-preview" v-if="tpl.styleDescription || tpl.style">
+            <div class="style-label">风格</div>
+            <div class="style-text">{{ tpl.styleDescription || tpl.style }}</div>
+          </div>
+          <div class="tpl-structure-preview" v-if="tpl.structure || tpl.structureJson">
+            <div class="structure-label">结构</div>
+            <div class="structure-tags">
+              <el-tag
+                v-for="(sec, si) in parseStructure(tpl.structure || tpl.structureJson)"
+                :key="si"
+                size="small"
+                effect="plain"
+                type="info"
+              >
+                {{ sec }}
+              </el-tag>
+            </div>
+          </div>
           <div class="tpl-meta" v-if="tpl.category">
             <el-tag size="small" type="info" effect="plain">{{ tpl.category }}</el-tag>
           </div>
@@ -132,6 +150,7 @@ interface TemplateItem {
   structure?: string
   style?: string
   styleDescription?: string
+  structureJson?: string
   content?: string
   isBuiltin?: boolean
   createdAt?: string
@@ -170,7 +189,8 @@ async function fetchList() {
   loading.value = true
   try {
     const res = await getTemplates()
-    list.value = (res.data as TemplateItem[]) || []
+    const raw = (res as any).data
+    list.value = Array.isArray(raw) ? raw : Array.isArray(raw?.records) ? raw.records : []
   } catch (e) {
     console.error('加载模板失败:', e)
   } finally {
@@ -262,6 +282,27 @@ function previewTemplate(tpl: TemplateItem) {
   previewTpl.value = tpl
   showPreviewDialog.value = true
 }
+
+function getTplColor(id: number): { bg: string; fg: string } {
+  const colors = [
+    { bg: 'rgba(99, 102, 241, 0.1)', fg: '#6366f1' },
+    { bg: 'rgba(16, 185, 129, 0.1)', fg: '#10b981' },
+    { bg: 'rgba(245, 158, 11, 0.1)', fg: '#f59e0b' },
+    { bg: 'rgba(239, 68, 68, 0.1)', fg: '#ef4444' },
+    { bg: 'rgba(139, 92, 246, 0.1)', fg: '#8b5cf6' }
+  ]
+  return colors[(id - 1) % colors.length]
+}
+
+function parseStructure(raw?: string): string[] {
+  if (!raw) return []
+  try {
+    const obj = JSON.parse(raw)
+    if (obj.sections && Array.isArray(obj.sections)) return obj.sections
+    if (Array.isArray(obj)) return obj.map(String)
+  } catch {}
+  return raw.split(/[,，\n]/).map(s => s.trim()).filter(Boolean)
+}
 </script>
 
 <style scoped>
@@ -277,7 +318,7 @@ function previewTemplate(tpl: TemplateItem) {
 .page-title {
   font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
   margin: 0;
 }
 .header-actions {
@@ -301,17 +342,22 @@ function previewTemplate(tpl: TemplateItem) {
   margin-bottom: 6px;
 }
 .tpl-icon {
-  font-size: 28px;
-  color: #409eff;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .tpl-name {
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
-  margin: 6px 0;
+  color: #0f172a;
+  margin: 8px 0 4px;
 }
 .tpl-desc {
-  color: #909399;
+  color: #64748b;
   font-size: 13px;
   min-height: 40px;
   line-height: 1.6;
@@ -320,6 +366,42 @@ function previewTemplate(tpl: TemplateItem) {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.tpl-style-preview {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border-left: 3px solid #6366f1;
+}
+.style-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6366f1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.style-text {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+}
+.tpl-structure-preview {
+  margin-bottom: 10px;
+}
+.structure-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.structure-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .tpl-meta {
   margin-bottom: 12px;
@@ -333,11 +415,11 @@ function previewTemplate(tpl: TemplateItem) {
 }
 .preview-label {
   font-weight: 600;
-  color: #303133;
+  color: #0f172a;
   margin-bottom: 6px;
 }
 .preview-content {
-  color: #606266;
+  color: #475569;
   font-size: 14px;
   line-height: 1.7;
   background: #f7f8fa;

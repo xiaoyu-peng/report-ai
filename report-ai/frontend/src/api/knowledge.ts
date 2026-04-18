@@ -4,6 +4,7 @@ export interface KnowledgeBase {
   id: number
   name: string
   description?: string
+  category?: string
   docCount: number
   chunkCount: number
   createdAt?: string
@@ -24,7 +25,7 @@ export interface KnowledgeDocument {
 export const getKnowledgeBases = () =>
   request.get('/v1/knowledge/bases')
 
-export const createKnowledgeBase = (data: { name: string; description: string }) =>
+export const createKnowledgeBase = (data: { name: string; description: string; category?: string }) =>
   request.post('/v1/knowledge/bases', data)
 
 export const deleteKnowledgeBase = (id: number) =>
