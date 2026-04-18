@@ -33,7 +33,8 @@
 
     <modules>
         <module>report-hub-common</module>
-        <!-- system / knowledge / report / api 将在后续 Task 中加入 -->
+        <module>report-hub-system</module>
+        <!-- knowledge / report / api 将在后续 Task 中加入 -->
     </modules>
 
     <dependencyManagement>
@@ -123,6 +124,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.volcengine</groupId>
+            <artifactId>volcengine-java-sdk-ark-runtime</artifactId>
+            <version>LATEST</version>
         </dependency>
     </dependencies>
 
