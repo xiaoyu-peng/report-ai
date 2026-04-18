@@ -61,6 +61,14 @@ report-ai:
       max-tokens: 4096
       timeout-seconds: 120
 
+qingtian:
+  mcp:
+    appkey: ${QINGTIAN_MCP_APPKEY:OOn05z7m}
+    search-url: ${QINGTIAN_SEARCH_URL:https://api-sc.wengegroup.com/search-mcp}
+    sass-url: ${QINGTIAN_SASS_URL:https://api-sc.wengegroup.com/sass-mcp}
+    connect-timeout: 5
+    read-timeout: 30
+
 logging:
   level:
     com.reportai.hub: debug

@@ -58,6 +58,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '报告库', icon: 'Folder' }
       },
       {
+        path: 'reports/:id',
+        name: 'ReportDetail',
+        component: () => import('@/views/reports/detail.vue'),
+        meta: { title: '报告详情', icon: 'Document', hidden: true }
+      },
+      {
         path: 'users',
         name: 'Users',
         redirect: '/users/list',

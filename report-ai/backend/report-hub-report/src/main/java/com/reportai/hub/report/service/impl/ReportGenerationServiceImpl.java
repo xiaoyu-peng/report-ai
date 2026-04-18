@@ -1,9 +1,12 @@
 package com.reportai.hub.report.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reportai.hub.common.exception.BusinessException;
 import com.reportai.hub.knowledge.dto.RagChunkHit;
+import com.reportai.hub.knowledge.mcp.SassMcpService;
+import com.reportai.hub.knowledge.mcp.SearchMcpService;
 import com.reportai.hub.knowledge.service.RagSearchService;
 import com.reportai.hub.report.dto.ReportCreateDTO;
 import com.reportai.hub.report.entity.Report;
@@ -19,8 +22,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -38,6 +44,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     private final ReportVersionMapper versionMapper;
     private final RagSearchService ragSearchService;
     private final LlmClient llmClient;
+    private final SassMcpService sassMcpService;
+    private final SearchMcpService searchMcpService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -93,10 +101,17 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
         String ragContext = renderRagContext(hits);
 
+        // 2.5 MCP 实时数据注入（传播分析/政策影响/行业分析类模板自动拉取舆情数据）
+        String mcpContext = buildMcpContext(report);
+        String fullContext = ragContext;
+        if (mcpContext != null && !mcpContext.isBlank()) {
+            fullContext = ragContext + "\n\n--- 以下是来自晴天舆情 MCP 的实时数据 ---\n" + mcpContext;
+        }
+
         // 3. 组 prompt
         String keyPointsBullets = renderKeyPoints(report);
         String user = Prompts.buildGenerationUser(
-                report.getTopic(), keyPointsBullets, styleJson, ragContext);
+                report.getTopic(), keyPointsBullets, styleJson, fullContext);
 
         // 4. 流式调用
         StringBuilder full = new StringBuilder();
@@ -179,5 +194,62 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                             h.getContent() == null ? "" : h.getContent());
                 })
                 .collect(Collectors.joining("\n\n"));
+    }
+
+    private String buildMcpContext(Report report) {
+        String topic = report.getTopic();
+        if (topic == null || topic.isBlank()) return null;
+
+        String templateName = getTemplateName(report);
+        if (templateName == null) return null;
+
+        String endDate = LocalDate.now().toString();
+        String startDate = LocalDate.now().minusDays(30).toString();
+
+        StringBuilder mcpData = new StringBuilder();
+
+        try {
+            if (templateName.contains("传播") || templateName.contains("舆情")) {
+                appendMcpResult(mcpData, "舆情概览", sassMcpService.overview(topic, startDate, endDate));
+                appendMcpResult(mcpData, "热门文章", sassMcpService.hotArticle(topic, startDate, endDate, 5));
+                appendMcpResult(mcpData, "情感分布", sassMcpService.emotionalDistribution(topic, startDate, endDate));
+                appendMcpResult(mcpData, "渠道声量", sassMcpService.datasourceSound(topic, startDate, endDate));
+                appendMcpResult(mcpData, "事件阶段演化", sassMcpService.stageEnvolution(topic, startDate, endDate));
+                appendMcpResult(mcpData, "事件概述", sassMcpService.generateEventTopicInfo(topic, startDate, endDate));
+            } else if (templateName.contains("政策")) {
+                appendMcpResult(mcpData, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
+                appendMcpResult(mcpData, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
+            } else if (templateName.contains("行业")) {
+                appendMcpResult(mcpData, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
+                appendMcpResult(mcpData, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
+            } else {
+                appendMcpResult(mcpData, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
+            }
+        } catch (Exception e) {
+            log.warn("MCP data fetch failed for topic '{}': {}", topic, e.getMessage());
+        }
+
+        return mcpData.length() > 0 ? mcpData.toString() : null;
+    }
+
+    private String getTemplateName(Report report) {
+        if (report.getTemplateId() == null) return null;
+        try {
+            ReportTemplate tpl = templateMapper.selectById(report.getTemplateId());
+            return tpl != null ? tpl.getName() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void appendMcpResult(StringBuilder sb, String label, JsonNode data) {
+        if (data == null) return;
+        sb.append("\n### ").append(label).append("\n");
+        try {
+            sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(data));
+        } catch (Exception e) {
+            sb.append(data.toString());
+        }
+        sb.append("\n");
     }
 }

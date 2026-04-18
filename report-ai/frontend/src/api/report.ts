@@ -28,9 +28,13 @@ export interface Template {
 export interface ReportVersion {
   id: number
   reportId: number
-  version: number
+  versionNum: number
+  title?: string
   content: string
-  mode?: string
+  sourceMode?: string
+  wordCount?: number
+  changeSummary?: string
+  createdBy?: number
   createdAt?: string
 }
 
@@ -103,3 +107,25 @@ export interface DashboardStats {
 
 export const getDashboardStats = () =>
   request.get('/v1/dashboard/stats')
+
+// MCP 舆情数据
+export const mcpSearchArticles = (keyword: string, page = 1, pageSize = 10) =>
+  request.get('/v1/mcp/search/articles', { params: { keyword, page, pageSize } })
+
+export const mcpGetArticleDetail = (articleId: string) =>
+  request.get(`/v1/mcp/search/article/${articleId}`)
+
+export const mcpOverview = (topic: string, startDate?: string, endDate?: string) =>
+  request.get('/v1/mcp/analysis/overview', { params: { topic, startDate, endDate } })
+
+export const mcpHotArticle = (topic: string, startDate?: string, endDate?: string, topN = 10) =>
+  request.get('/v1/mcp/analysis/hot-article', { params: { topic, startDate, endDate, topN } })
+
+export const mcpEmotionalDistribution = (topic: string, startDate?: string, endDate?: string) =>
+  request.get('/v1/mcp/analysis/emotional-distribution', { params: { topic, startDate, endDate } })
+
+export const mcpDatasourceSound = (topic: string, startDate?: string, endDate?: string) =>
+  request.get('/v1/mcp/analysis/datasource-sound', { params: { topic, startDate, endDate } })
+
+export const mcpHotWords = (topic: string, startDate?: string, endDate?: string) =>
+  request.get('/v1/mcp/analysis/hot-words', { params: { topic, startDate, endDate } })

@@ -63,6 +63,23 @@
             </el-select>
           </el-form-item>
 
+          <el-form-item label="外部舆情数据">
+            <el-button
+              size="small"
+              type="success"
+              plain
+              style="width: 100%"
+              :disabled="generating"
+              @click="showMcpDialog = true"
+            >
+              <el-icon><Connection /></el-icon>
+              引入晴天 MCP 数据
+            </el-button>
+            <div v-if="mcpArticles.length > 0" class="mcp-imported-hint">
+              已引入 {{ mcpArticles.length }} 篇舆情文章
+            </div>
+          </el-form-item>
+
           <el-form-item label="写作风格模板">
             <el-select
               v-model="form.templateId"
@@ -198,15 +215,45 @@
           <span>AI 正在思考和撰写，请稍候...</span>
         </div>
 
-        <!-- Streaming / editable content -->
+        <!-- AI 生成进度条 -->
+        <div v-if="generating && progressStep" class="progress-bar">
+          <div class="progress-steps">
+            <div
+              v-for="(label, i) in progressSteps"
+              :key="i"
+              class="progress-step"
+              :class="{
+                active: i + 1 === progressStep.stepIndex,
+                done: i + 1 < progressStep.stepIndex
+              }"
+            >
+              <div class="step-dot">
+                <el-icon v-if="i + 1 < progressStep.stepIndex"><Check /></el-icon>
+                <el-icon v-else-if="i + 1 === progressStep.stepIndex" class="is-loading"><Loading /></el-icon>
+                <span v-else>{{ i + 1 }}</span>
+              </div>
+              <span class="step-label">{{ label }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Streaming: Markdown 渐进渲染 + 打字光标 -->
+        <div
+          v-if="content && (generating || rewriting) && viewMode === 'edit'"
+          ref="streamingEl"
+          class="streaming-editor"
+          @click="handleCiteClick"
+          v-html="streamingHtml"
+        />
+
+        <!-- Editable textarea（非流式时手动编辑） -->
         <el-input
-          v-if="(content || generating) && viewMode === 'edit'"
+          v-if="content && !generating && !rewriting && viewMode === 'edit'"
           v-model="content"
           type="textarea"
           :rows="30"
           resize="none"
           class="report-editor"
-          :readonly="generating || rewriting"
           placeholder="报告内容将在此处流式显示..."
         />
 
@@ -220,6 +267,54 @@
         />
       </el-card>
     </div>
+
+    <!-- MCP 数据引入弹窗 -->
+    <el-dialog v-model="showMcpDialog" title="引入晴天 MCP 舆情数据" width="700px" top="6vh">
+      <div class="mcp-dialog-body">
+        <el-input
+          v-model="mcpKeyword"
+          placeholder="输入关键词搜索舆情文章..."
+          :loading="mcpSearching"
+          @keyup.enter="searchMcpArticles"
+        >
+          <template #append>
+            <el-button @click="searchMcpArticles" :loading="mcpSearching">搜索</el-button>
+          </template>
+        </el-input>
+
+        <div v-if="mcpSearchResults.length > 0" class="mcp-results">
+          <div class="mcp-results-header">
+            <span>搜索结果（{{ mcpSearchResults.length }} 篇）</span>
+            <el-button size="small" type="primary" @click="selectAllMcp">全选</el-button>
+          </div>
+          <div class="mcp-results-list">
+            <div
+              v-for="(article, i) in mcpSearchResults"
+              :key="i"
+              class="mcp-article-item"
+              :class="{ selected: mcpSelectedIndices.has(i) }"
+              @click="toggleMcpSelect(i)"
+            >
+              <div class="mcp-article-title">{{ article.title || article.articleTitle || `文章 ${i + 1}` }}</div>
+              <div class="mcp-article-meta">
+                <span v-if="article.source || article.mediaName">{{ article.source || article.mediaName }}</span>
+                <span v-if="article.publishTime || article.publishDate">{{ article.publishTime || article.publishDate }}</span>
+              </div>
+              <div v-if="article.summary || article.content" class="mcp-article-summary">
+                {{ (article.summary || article.content || '').substring(0, 120) }}...
+              </div>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else-if="!mcpSearching" description="输入关键词搜索舆情文章" :image-size="60" />
+      </div>
+      <template #footer>
+        <el-button @click="showMcpDialog = false">取消</el-button>
+        <el-button type="primary" :disabled="mcpSelectedIndices.size === 0" @click="confirmMcpImport">
+          确认引入（{{ mcpSelectedIndices.size }} 篇）
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Right: Citation Traceability Panel（仅在有 chunks 时展示） -->
     <div v-if="chunks.length > 0" class="citations-panel">
@@ -272,13 +367,16 @@ import {
   Select,
   ArrowDown,
   Collection,
-  Download
+  Download,
+  Connection,
+  Check
 } from '@element-plus/icons-vue'
 import { getKnowledgeBases, type KnowledgeBase } from '@/api/knowledge'
 import {
   getTemplates,
   createReport,
   updateReport,
+  mcpSearchArticles,
   type Template,
   type RewriteMode
 } from '@/api/report'
@@ -324,12 +422,29 @@ const templates = ref<Template[]>([])
 const chunks = ref<ChunkHit[]>([])
 const highlightedCite = ref<number | null>(null)
 
+// MCP 舆情数据引入状态
+const showMcpDialog = ref(false)
+const mcpKeyword = ref('')
+const mcpSearching = ref(false)
+const mcpSearchResults = ref<any[]>([])
+const mcpSelectedIndices = ref<Set<number>>(new Set())
+const mcpArticles = ref<any[]>([])
+
+// AI 生成进度
+const progressSteps = ['检索知识库', '分析风格与结构', '获取舆情数据', 'AI 撰写报告', '完稿与版本保存']
+const progressStep = ref<{ step: string; stepIndex: number; totalSteps: number } | null>(null)
+
 // 编辑 / 预览切换。生成/改写过程中默认编辑态（让用户看流式 token），完成后跳到预览态以显示角标。
 const viewMode = ref<'edit' | 'preview'>('edit')
 const renderedHtml = computed(() => renderReportMarkdown(content.value))
+const streamingHtml = computed(() => {
+  if (!content.value) return ''
+  const html = renderReportMarkdown(content.value)
+  return html + '<span class="typing-cursor">▍</span>'
+})
 
-// 预览 DOM ref —— PDF 导出用它作为 html2pdf 的渲染源。
 const previewEl = ref<HTMLDivElement | null>(null)
+const streamingEl = ref<HTMLDivElement | null>(null)
 
 // In-flight abort controller for streaming requests
 let activeController: AbortController | null = null
@@ -361,6 +476,7 @@ onBeforeUnmount(() => {
 interface SseHandlers {
   onToken?: (payload: string) => void
   onChunks?: (hits: ChunkHit[]) => void
+  onProgress?: (step: string, stepIndex: number, totalSteps: number) => void
   onDone?: (payload: string) => void
   onError?: (msg: string) => void
 }
@@ -408,6 +524,16 @@ async function consumeSseStream(response: Response, handlers: SseHandlers): Prom
           handlers.onChunks(Array.isArray(parsed) ? parsed : [])
         } catch (e) {
           console.warn('SSE chunks payload parse failed:', e)
+        }
+        return
+      }
+      case 'progress': {
+        if (!handlers.onProgress) return
+        try {
+          const parsed = JSON.parse(data)
+          handlers.onProgress(parsed.step, parsed.stepIndex, parsed.totalSteps)
+        } catch (e) {
+          console.warn('SSE progress payload parse failed:', e)
         }
         return
       }
@@ -500,8 +626,18 @@ async function handleGenerate() {
     }
 
     await consumeSseStream(resp, {
-      onToken: (t) => { content.value += t },
+      onToken: (t) => {
+        content.value += t
+        nextTick(() => {
+          if (streamingEl.value) {
+            streamingEl.value.scrollTop = streamingEl.value.scrollHeight
+          }
+        })
+      },
       onChunks: (hits) => { chunks.value = hits },
+      onProgress: (step, stepIndex, totalSteps) => {
+        progressStep.value = { step, stepIndex, totalSteps }
+      },
       onError: (msg) => { streamError = msg || '生成失败' }
     })
 
@@ -519,6 +655,7 @@ async function handleGenerate() {
     }
   } finally {
     generating.value = false
+    progressStep.value = null
     activeController = null
   }
 }
@@ -627,8 +764,12 @@ async function handleRewrite(mode: RewriteMode) {
           continuationSeparatorInserted = true
         }
         content.value += t
+        nextTick(() => {
+          if (streamingEl.value) {
+            streamingEl.value.scrollTop = streamingEl.value.scrollHeight
+          }
+        })
       },
-      // 改写不触发 RAG 重检索，后端一般不会再发 chunks；若发则刷新。
       onChunks: (hits) => { chunks.value = hits },
       onError: (msg) => { streamError = msg || '改写失败' }
     })
@@ -680,6 +821,61 @@ function scrollToCitation(n: number) {
   window.setTimeout(() => {
     if (highlightedCite.value === n) highlightedCite.value = null
   }, 1500)
+}
+
+async function searchMcpArticles() {
+  if (!mcpKeyword.value.trim()) return
+  mcpSearching.value = true
+  mcpSearchResults.value = []
+  mcpSelectedIndices.value = new Set()
+  try {
+    const res = await mcpSearchArticles(mcpKeyword.value.trim())
+    const data = (res as any).data
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data)) {
+        mcpSearchResults.value = data
+      } else if (data.list && Array.isArray(data.list)) {
+        mcpSearchResults.value = data.list
+      } else if (data.data && Array.isArray(data.data)) {
+        mcpSearchResults.value = data.data
+      } else if (data.records && Array.isArray(data.records)) {
+        mcpSearchResults.value = data.records
+      } else {
+        mcpSearchResults.value = [data]
+      }
+    }
+  } catch (e) {
+    console.error('MCP 搜索失败:', e)
+    ElMessage.error('搜索舆情数据失败')
+  } finally {
+    mcpSearching.value = false
+  }
+}
+
+function toggleMcpSelect(index: number) {
+  const newSet = new Set(mcpSelectedIndices.value)
+  if (newSet.has(index)) {
+    newSet.delete(index)
+  } else {
+    newSet.add(index)
+  }
+  mcpSelectedIndices.value = newSet
+}
+
+function selectAllMcp() {
+  if (mcpSelectedIndices.value.size === mcpSearchResults.value.length) {
+    mcpSelectedIndices.value = new Set()
+  } else {
+    mcpSelectedIndices.value = new Set(mcpSearchResults.value.map((_, i) => i))
+  }
+}
+
+function confirmMcpImport() {
+  const selected = mcpSelectedIndices.value
+  const articles = Array.from(selected).map(i => mcpSearchResults.value[i])
+  mcpArticles.value = [...mcpArticles.value, ...articles]
+  showMcpDialog.value = false
+  ElMessage.success(`已引入 ${articles.length} 篇舆情文章`)
 }
 
 async function saveReport() {
@@ -868,7 +1064,8 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 
 /* Markdown 预览区 —— 保持与编辑器一致的行高/字号 */
-.report-preview {
+.report-preview,
+.streaming-editor {
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.85;
@@ -877,23 +1074,47 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   min-height: 600px;
   overflow-wrap: break-word;
 }
+.streaming-editor {
+  overflow-y: auto;
+}
+
+/* 打字光标闪烁动画 */
+.streaming-editor :deep(.typing-cursor) {
+  display: inline;
+  color: #409eff;
+  font-weight: 400;
+  animation: cursor-blink 0.8s step-end infinite;
+}
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 .report-preview :deep(h1),
 .report-preview :deep(h2),
-.report-preview :deep(h3) {
+.report-preview :deep(h3),
+.streaming-editor :deep(h1),
+.streaming-editor :deep(h2),
+.streaming-editor :deep(h3) {
   font-weight: 600;
   color: #1f2d3d;
   margin: 1.2em 0 0.6em;
 }
-.report-preview :deep(p) { margin: 0.6em 0; }
+.report-preview :deep(p),
+.streaming-editor :deep(p) { margin: 0.6em 0; }
 .report-preview :deep(ul),
-.report-preview :deep(ol) { margin: 0.5em 0; padding-left: 1.4em; }
-.report-preview :deep(code) {
+.report-preview :deep(ol),
+.streaming-editor :deep(ul),
+.streaming-editor :deep(ol) { margin: 0.5em 0; padding-left: 1.4em; }
+.report-preview :deep(code),
+.streaming-editor :deep(code) {
   background: #f4f6fa;
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 0.92em;
 }
-.report-preview :deep(sup.cite) {
+.report-preview :deep(sup.cite),
+.streaming-editor :deep(sup.cite) {
   display: inline-block;
   margin: 0 2px;
   padding: 0 4px;
@@ -906,7 +1127,8 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   user-select: none;
   transition: background 0.15s, color 0.15s;
 }
-.report-preview :deep(sup.cite:hover) {
+.report-preview :deep(sup.cite:hover),
+.streaming-editor :deep(sup.cite:hover) {
   background: #409eff;
   color: #fff;
 }
@@ -977,5 +1199,120 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   font-size: 11px;
   color: #909399;
   text-align: right;
+}
+
+/* MCP 引入相关 */
+.mcp-imported-hint {
+  font-size: 12px;
+  color: #67c23a;
+  margin-top: 4px;
+}
+.mcp-dialog-body {
+  min-height: 300px;
+}
+.mcp-results {
+  margin-top: 16px;
+}
+.mcp-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #606266;
+}
+.mcp-results-list {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mcp-article-item {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mcp-article-item:hover {
+  border-color: #409eff;
+}
+.mcp-article-item.selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.mcp-article-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 4px;
+}
+.mcp-article-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+.mcp-article-summary {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+/* AI 生成进度条 */
+.progress-bar {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #ecf5ff 100%);
+  border-radius: 8px;
+  border: 1px solid #d9ecff;
+}
+.progress-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+.step-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  background: #e4e7ed;
+  color: #909399;
+  transition: all 0.3s;
+}
+.progress-step.done .step-dot {
+  background: #67c23a;
+  color: #fff;
+}
+.progress-step.active .step-dot {
+  background: #409eff;
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.2);
+}
+.step-label {
+  font-size: 11px;
+  color: #909399;
+  white-space: nowrap;
+}
+.progress-step.active .step-label {
+  color: #409eff;
+  font-weight: 600;
+}
+.progress-step.done .step-label {
+  color: #67c23a;
 }
 </style>

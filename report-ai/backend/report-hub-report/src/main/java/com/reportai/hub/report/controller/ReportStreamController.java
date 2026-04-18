@@ -51,11 +51,24 @@ public class ReportStreamController {
         applySseHeaders(response);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         Long operatorId = UserContext.getUserId();
-        sseExecutor.execute(() -> runStream(emitter, "generate",
-                (onToken, onDone) ->
+        sseExecutor.execute(() -> {
+            sendSafely(emitter, "progress", "{\"step\":\"检索知识库\",\"stepIndex\":1,\"totalSteps\":5}");
+            runStream(emitter, "generate",
+                    (onToken, onDone) -> {
+                        sendSafely(emitter, "progress", "{\"step\":\"分析风格与结构\",\"stepIndex\":2,\"totalSteps\":5}");
+                        sendSafely(emitter, "progress", "{\"step\":\"获取舆情数据\",\"stepIndex\":3,\"totalSteps\":5}");
                         generationService.streamGenerate(id, operatorId,
-                                hits -> sendSafely(emitter, "chunks", toChunksJson(hits)),
-                                onToken, onDone)));
+                                hits -> {
+                                    sendSafely(emitter, "progress", "{\"step\":\"AI 撰写报告\",\"stepIndex\":4,\"totalSteps\":5}");
+                                    sendSafely(emitter, "chunks", toChunksJson(hits));
+                                },
+                                onToken,
+                                () -> {
+                                    sendSafely(emitter, "progress", "{\"step\":\"完稿与版本保存\",\"stepIndex\":5,\"totalSteps\":5}");
+                                    onDone.run();
+                                });
+                    });
+        });
         return emitter;
     }
 
