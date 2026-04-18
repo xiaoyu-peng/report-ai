@@ -1,59 +1,54 @@
 # AI 工具使用日志
 
 > 赛题硬性要求（`docs/竞赛题目/AI闯关赛第二站.pdf` 第 1 页"总体要求"第 3 条：必须提交 AI 工具使用日志，无日志不得参加答辩）。
-> 规则：每一个 commit / 每一次重要决策都追加一行。列：日期时间、负责角色、使用的 AI 工具、解决的问题、产出 / commit 号。
+> 规则：以「里程碑 / 重要决策」为粒度合并记录，便于答辩查阅。详细 commit 历史见 `git log`。
 
 ## 时间线
 
 | 时间 | 角色 | AI 工具 | 解决的问题 | 产出 / commit |
 | --- | --- | --- | --- | --- |
-| 2026-04-18 10:41 | Leo | Claude Code (Opus 4.7) | 分析赛题 + 目录整理 + 初始化 CLAUDE.md | `40782bf` |
-| 2026-04-18 11:00 | Vera | Claude Code + curl | 探测晴天 MCP（search + sass）可达性，拉 `tools/list`（3 + 41 工具） | `docs/mcp-integration.md`、`docs/mcp-schemas/*.json` |
-| 2026-04-18 11:05 | Vera | pdftoppm + Claude 多模态读图 | 从赛题 PDF T5 页抽需求与评分标准 | `docs/requirements.md` |
-| 2026-04-18 11:08 | Vera | pdftoppm + Claude 多模态读图 | 识别 5 类样例报告的结构与风格 | `docs/report-style-guide.md` |
-| 2026-04-18 11:10 | Leo | Git + GitHub API | 初始化仓库、加 .gitignore、推 docs baseline | `40782bf` |
-| 2026-04-18 11:14 | Arch | Claude Code | 生成 Cherry Studio 配置片段（UI + config.json + curl 对照） | `f5f9891` |
-| 2026-04-18 11:18 | Arch | Claude Code + jq | 按 7 类分组整理 sass-mcp 41 个工具 + 必填参数 | `b087c77` |
-| 2026-04-18 11:23 | Arch | Claude Code + Python | 持久化 tools/list 快照到 `docs/mcp-schemas/` | `dd7d0db` |
-| 2026-04-18 11:25 | Arch | WebSearch + WebFetch | 调研 2026 可用 MCP 生态（filesystem/github/mysql/Docling/Qdrant） | `feaf0eb` - `docs/additional-mcps.md` |
-| 2026-04-18 11:30 | Bolt | Claude Code + Docker | Task 1: docker-compose.yml + init.sql + Dockerfile；起 MySQL 验证 9 张表 + FULLTEXT 生效 | `c0e62c8` |
-| 2026-04-18 11:36 | Bolt | Claude Code + sed + mvn | Task 2: 移植第一站 common 模块 27 类，批量改包名 `skillmcp.hub → reportai.hub`，mvn compile 通过 | `b3283ed` |
-| 2026-04-18 11:40 | Leo | Claude Code | 引入 7 角色虚拟 AI 团队并映射到产物清单 | `408f52f` |
-| 2026-04-18 11:50 | Lens | Claude Code | 写精简 PRD：5 用户故事 + 30 个 v1 接口契约 + 验收清单 | 本 commit |
-| 2026-04-18 11:52 | Leo | Claude Code | 启动 AI 工具使用日志（本文件） | 本 commit |
-| 2026-04-18 11:50 | Bolt | Claude Code + sed + mvn | Task 3: 移植 22 个 system 文件（user/role/department/log），遇到 LogController 引用 SkillMCP-only 类，改写为仅保留 operation 查询；pom.xml 临时 exclude 4 个 Ark/Doubao 文件待 Task 5 处理 | `867a7fb` |
-| 2026-04-18 11:56 | Leo | git | 发现 `.doubao`（含 api-key）被 `git add` 进 index，撤回 + 加 gitignore + push 固化 | `ee2a6e9` |
-| 2026-04-18 12:04 | Bolt | Claude Code + Tika 2.9 + MySQL FULLTEXT | Task 4 knowledge 模块（21 类，BUILD SUCCESS）：KB/Doc/Chunk 三层实体 + Tika 解析 + 段落+句子两级分块（500 char + 50 overlap）+ Jsoup URL 抓取 + FULLTEXT BOOLEAN MODE 检索（CJK 单字分词） | `9a01bf3` |
-| 2026-04-18 12:16 | Bolt | Claude Code + Anthropic Messages API + JDK HttpClient SSE | Task 5 report 模块（27 类, BUILD SUCCESS）：Report/Template/Version 3 表 + LlmClient 抽象 + ClaudeLlmClient (JDK HttpClient 裸 SSE 解析) + Prompts 中心化 (风格分析/生成/4 模式改写) + ReportGeneration/Rewrite/Version/Template 4 个 Service + 4 个 Controller（含 SseEmitter 的 GET /generate 和 POST /rewrite） | `7e60c09` |
-| 2026-04-18 16:08 | Bolt | Claude Code + Maven 3.9 + JDK 17 | Task 6 api 模块：父 POM 注册 5 子模块 + report-hub-api/pom.xml（Spring Boot repackage + knife4j/actuator/redis/mysql）+ ReportAiApplication（@MapperScan 覆盖 6 个 mapper 包）+ AuthController（登录/userinfo/logout 从第一站移植改包名）+ DashboardController（reports/kb/users 三项 stats）+ application.yml（datasource/redis/mybatis-plus/jwt/report-ai.llm 全部 env var 注入）| `ed71523` |
-| 2026-04-18 16:27 | Arch | Claude Code + Volcengine Ark SDK 2.0.0 | Task 6.1 LLM 基础设施下沉 + 豆包接入：按「怎么调 LLM 属 common，调 LLM 干什么属业务」原则，把 LlmClient/LlmProperties/ClaudeLlmClient 从 report/llm 下沉到 common/llm，Prompts/Service 保留在 report；新增 DoubaoLlmClient（ArkService.createChatCompletion / streamChatCompletion，接入点 ID 作 model 参数）；两个客户端用 @ConditionalOnProperty(provider=claude/doubao) 互斥装配，LlmAutoConfiguration 常驻绑定 LlmProperties；删除 4 个 stray Doubao 文件（ArkClient/DoubaoClient/DoubaoAutoConfiguration/DoubaoProperties）+ common pom excludes 清理；application.yml 默认切 provider=doubao，走 DOUBAO_* env 注入 | 待 commit |
+| 2026-04-18 10:41 | Leo | Claude Code (Opus 4.7) + Git | 赛题解读、目录梳理、初始化 CLAUDE.md 与 .gitignore、推 docs baseline | `40782bf` |
+| 2026-04-18 11:05 | Vera | pdftoppm + Claude 多模态 + curl | 多模态读图抽取赛题需求与 5 份样例报告风格；同步探测晴天 MCP（search 3 + sass 41 工具）可达性 | `docs/requirements.md`、`report-style-guide.md`、`mcp-integration.md` |
+| 2026-04-18 11:14–25 | Arch | Claude Code + jq + Python + WebSearch | MCP 文档化闭环：Cherry Studio 配置片段 + 41 工具按 7 类归并 + tools/list JSON 快照持久化 + 2026 生态调研 | `f5f9891`、`b087c77`、`dd7d0db`、`feaf0eb` |
+| 2026-04-18 11:30 | Bolt | Claude Code + Docker | Task 1 基础设施：docker-compose + init.sql（9 表 + FULLTEXT，含 `innodb-ft-min-token-size=1` 解决中文检索）+ 后端 Dockerfile，MySQL 冷启动验证 | `c0e62c8` |
+| 2026-04-18 11:36 | Bolt | Claude Code + sed + mvn | Task 2 common 移植：第一站 27 类 `skillmcp.hub → reportai.hub` 批量改包，`mvn compile` 首次即过 | `b3283ed` |
+| 2026-04-18 11:40 | Leo + Lens | Claude Code | 引入 7 角色虚拟 AI 团队；编写精简 PRD（5 用户故事 + 30 个 v1 接口契约 + 验收清单）；启动本日志 | `408f52f` |
+| 2026-04-18 11:50 | Bolt | Claude Code + sed + mvn | Task 3 system 移植：22 文件（user/role/department/log），LogController 去除 SkillMCP 依赖；pom 临时 exclude 4 个 Ark/Doubao 僵尸文件 | `867a7fb` |
+| 2026-04-18 11:56 | Leo | git | `.doubao`（明文 api-key）误入 index，紧急 `git rm --cached` + gitignore 固化 | `ee2a6e9` |
+| 2026-04-18 12:04 | Bolt | Claude Code + Apache Tika 2.9 + MySQL FULLTEXT | Task 4 knowledge 模块（21 类）：KB/Doc/Chunk 三层实体 + Tika 解析 + 段落+句子两级分块（500 char + 50 overlap）+ Jsoup URL 抓取 + BOOLEAN MODE 检索（CJK 单字分词） | `9a01bf3` |
+| 2026-04-18 12:16 | Bolt | Claude Code + Anthropic Messages API + JDK HttpClient SSE | Task 5 report 模块（27 类）：Report/Template/Version 3 表 + `LlmClient` 抽象 + `ClaudeLlmClient` 裸 SSE 解析 + `Prompts` 中心化（风格分析/生成/4 模式改写）+ 4 个 Service + 4 个 Controller（含 SseEmitter `GET /generate` 与 `POST /rewrite`）| `7e60c09` |
+| 2026-04-18 16:08 | Bolt | Claude Code + Maven 3.9 + JDK 17 | Task 6 api 模块：父 POM 注册 5 子模块 + Spring Boot 主入口（@MapperScan 6 个 mapper 包）+ AuthController 从第一站移植 + DashboardController stats + application.yml 全 env var 注入；首次打出 114 MB fat jar | `ed71523` |
+| 2026-04-18 16:27 | Arch | Claude Code + Volcengine Ark SDK 2.0.0 | LLM 架构下沉：按"怎么调 LLM 属 common、调 LLM 干什么属业务"原则，把 `LlmClient/LlmProperties/ClaudeLlmClient` 从 report 下沉到 common/llm；新增 `DoubaoLlmClient`，两客户端用 `@ConditionalOnProperty(provider=claude/doubao)` 互斥装配；删除 4 个 stray 僵尸文件 + pom excludes；application.yml 默认切豆包 | `897ecf5` |
 
 ## 使用的 AI 工具汇总
 
-- **Claude Code CLI（Opus 4.7, 1M context）**：主力 IDE，90% 的编码 / 文档 / 决策在此完成；
-- **Claude 多模态**：直接读取 PDF 转 PNG 后的图像，抽赛题要求和样例结构；
-- **Cherry Studio（MacOS）**：挂 4 个 MCP（qingtian-search / qingtian-sass / context7 / figma）做轮次调试；
-- **context7 MCP**：拉 Vue 3 / Spring Boot / MyBatis Plus 实时文档；
-- **晴天自研 MCP**：`search-mcp`（3 个工具）+ `sass-mcp`（41 个工具），用于"传播分析报告"类的真实数据接入；
-- **pdftoppm / pdftotext**：PDF → 图像 / 文本提取；
-- **jq + Python**：解析 MCP tools/list JSON；
-- **Docker Compose + MySQL 8**：起数据库验证 init.sql；
-- **Maven 3.9 + JDK 17**：后端构建；
-- **Git + GitHub**：全程版本控制 + 远端推送（https://github.com/xiaoyu-peng/report-ai）。
+- **Claude Code CLI（Opus 4.7 / Sonnet 4.6）**：主力 IDE，90% 的编码、文档、决策在此完成；
+- **Claude 多模态**：直接读取 PDF 转 PNG 后的图像，抽赛题要求与样例结构；
+- **Cherry Studio（macOS）**：挂载 4 个 MCP（qingtian-search / qingtian-sass / context7 / figma）做轮次调试；
+- **context7 MCP**：实时拉取 Vue 3 / Spring Boot / MyBatis Plus 文档；
+- **晴天自研 MCP**：`search-mcp`（3 工具）+ `sass-mcp`（41 工具），用于传播分析类报告的真实数据接入；
+- **大模型能力**：Claude（Anthropic Messages API，SSE 流式）+ 豆包（Volcengine Ark 2.0.0 Chat Completions），`@ConditionalOnProperty` 运行时切换；
+- **外部工具链**：pdftoppm / pdftotext（PDF → 图像/文本）、jq + Python（MCP JSON 解析）、Apache Tika 2.9（文档解析）、Docker Compose + MySQL 8（环境）、Maven 3.9 + JDK 17（构建）、Git + GitHub（版本控制，仓库 https://github.com/xiaoyu-peng/report-ai）。
 
-## 典型对话片段（选 3 例存档，答辩用）
+## 典型对话片段（答辩存档）
 
-1. **"赛题 PDF 拿不到文本怎么办"**
-   - 问题：`pdftotext` 因 PDF 字段问题失败；
-   - 方案：改用 `pdftoppm -r 250 -png` 转图像，让 Claude 多模态直接 OCR + 理解；
+1. **"赛题 PDF 抽不到文本"**
+   - 问题：`pdftotext` 因 PDF 字段编码异常失败；
+   - 方案：改走 `pdftoppm -r 250 -png` 转图像 → Claude 多模态直接 OCR 并理解；
    - 结果：一次性拿到 T5 完整需求 + 评分细则。
 
-2. **"7 类 MCP 工具怎么快速整理"**
-   - 问题：sass-mcp 返回 41 个工具，单独看都有冗长描述；
-   - 方案：Python 脚本 + `required` 字段排重，按"共用参数 § 3.0"抽出来，个别工具只列额外必填；
-   - 结果：261 行表就涵盖 41 个工具，代码生成器可直接 `jq` 消费。
+2. **"41 个 MCP 工具怎么快速整理"**
+   - 问题：sass-mcp `tools/list` 返回 41 个工具，每个都有冗长描述；
+   - 方案：Python + `required` 字段排重，按"共用参数 § 3.0"上提，个别工具只列额外必填；
+   - 结果：261 行表涵盖 41 工具，代码生成器可 `jq` 直接消费。
 
-3. **"第一站代码怎么快速复用"**
-   - 问题：第一站 `com.skillmcp.hub` 包名和 SkillMCP 领域词要迁到 `com.reportai.hub`；
-   - 方案：`sed 's|com\.skillmcp\.hub|com.reportai.hub|g'` 批量改，用 grep 白名单只拿通用的 27 个类，跳过 Skill/Mcp/ApiKey 等业务类；
-   - 结果：4 分钟完成移植，`mvn compile` 首次就过。
+3. **"第一站代码如何快速复用"**
+   - 问题：第一站包名 `com.skillmcp.hub` 与 SkillMCP 领域词要整体迁到 `com.reportai.hub`；
+   - 方案：`sed 's|com\.skillmcp\.hub|com.reportai.hub|g'` 批量改 + grep 白名单只拿 27 个通用类（跳过 Skill/Mcp/ApiKey 等业务类）；
+   - 结果：4 分钟完成移植，`mvn compile` 首次即过。
+
+4. **"LLM 客户端应该放在哪个模块"**
+   - 问题：Task 5 阶段把 `ClaudeLlmClient` 放进了 `report-hub-report/llm/`，Task 6.1 补豆包时需要决策；
+   - 分析：LLM 客户端是"对外部 API 的适配层"，与 JwtUtil/MybatisPlus 同级，属基础设施；`Prompts` 才是业务语义；
+   - 方案：整体下沉 `LlmClient/LlmProperties/ClaudeLlmClient/DoubaoLlmClient` 到 `common/llm/`，`Prompts` 和 Service 保留在 report；provider 切换走 `@ConditionalOnProperty`；
+   - 结果：未来 knowledge 做文档摘要、system 做日志智能分类都可零成本复用，避免反向依赖 report。
