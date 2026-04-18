@@ -238,7 +238,11 @@ curl -sS -X POST https://api-sc.wengegroup.com/sass-mcp \
 | 40 | `sound-proportion` | `schemeIdList` | 多主题声量占比对比分析 |
 | 41 | `get-media-list` | `mediaAccountList` | 指定媒体账号列表的发文量 / 互动数据统计 |
 
-> 所有工具的完整入参 schema（含字段说明和枚举值）已缓存在仓库本地：`/tmp/search_tools.json`、`/tmp/sass_tools.json`。重新拉取命令见 §0.5。
+> **完整入参 schema**（含每个字段的 description / 枚举值 / 子对象结构）已作为 JSON 快照入库：
+> - `docs/mcp-schemas/search-mcp.tools.json`（3 个工具）
+> - `docs/mcp-schemas/sass-mcp.tools.json`（41 个工具）
+>
+> 查阅命令和重新拉取方式见 [`docs/mcp-schemas/README.md`](./mcp-schemas/README.md)。
 
 ## 4. 在 ReportAI 中的使用策略
 

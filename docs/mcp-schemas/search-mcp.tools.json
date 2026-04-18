@@ -1,0 +1,321 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "tools": [
+      {
+        "description": "互联网发文内容检索工具.当用户需要搜索、查找或检索互联网上的新闻、微博、微信文章、抖音视频、评论等发文内容时使用此工具.支持关键词表达式(高级/简易模式)、时间范围、媒体渠道(微博/微信/抖音/快手/头条/知乎/B站等国内外主流平台)、文章类型(原创/转发/评论)、内容匹配方式(文本/OCR/语音/人脸)等多维度过滤, 返回分页的发文列表(标题、摘要、链接、互动数据等).若需获取某篇文章的完整内容, 请配合 article-detail 工具使用.\n\n【调用示例】\n示例1 - 简易模式近7天搜索(最常用): {\"articleInfo\":{\"searchMode\":{\"searchType\":1,\"simpleKeyword\":{\"mustKeyWord\":[\"人工智能\"],\"anyKeyWord\":[\"大模型\",\"ChatGPT\"],\"needExclude\":[\"广告\"]}},\"searchTime\":{\"realTime\":7,\"now\":\"2026-03-17 10:00:00\"}},\"sortInfo\":{\"sortField\":1,\"sortWay\":\"desc\"},\"pageInfo\":{\"currentPage\":1,\"pageSize\":10}}\n示例2 - 高级表达式模式自定义时间范围: {\"articleInfo\":{\"searchMode\":{\"searchType\":0,\"keywordExps\":[\"(华为|小米)&(手机|折叠屏)\",\"!(水军|刷量)\"]},\"searchTime\":{\"realTime\":0,\"now\":\"2026-03-17 10:00:00\",\"startPubTime\":\"2026-03-01 00:00:00\",\"endPubTime\":\"2026-03-17 23:59:59\"}},\"pageInfo\":{\"currentPage\":1,\"pageSize\":20}}\n示例3 - 指定渠道+仅查原创+按热度排序: {\"articleInfo\":{\"searchMode\":{\"searchType\":1,\"simpleKeyword\":{\"anyKeyWord\":[\"特朗普\",\"关税\"]}},\"searchTime\":{\"realTime\":3,\"now\":\"2026-03-17 10:00:00\"},\"articleTypes\":[1]},\"sortInfo\":{\"sortField\":7,\"sortWay\":\"desc\"},\"pageInfo\":{\"currentPage\":1,\"pageSize\":10}}",
+        "inputSchema": {
+          "properties": {
+            "articleInfo": {
+              "description": "发文检索主体参数, 包含所有搜索过滤条件.【强制要求】每次调用必须包含 searchTime 字段(含 now 和 realTime), 缺少 searchTime 将导致请求失败.searchMode 为关键词配置对象(可选), 关键词不能直接填在 searchMode 上, 必须放入其子字段 simpleKeyword.anyKeyWord 等数组中, 不填 searchMode 则不按关键词过滤.dataSources(渠道)、matchMethods(匹配方式)、articleTypes(文章类型)均为可选过滤项.",
+              "properties": {
+                "articleTypes": {
+                  "description": "发文类型过滤(可选, 默认返回所有类型).0=对话类内容;1=原创发文(作者原始内容);2=转发内容(转发他人发文);3=评论(对其他发文的回复).可多选, 如[1,2]表示只返回原创和转发内容.",
+                  "item": "integer",
+                  "required": false,
+                  "type": "array"
+                },
+                "dataSources": {
+                  "description": "媒体渠道/平台类型过滤列表(可选, 不填则查询全部渠道).渠道代码值需通过字典接口获取.常见渠道涵盖微博、微信公众号、抖音、快手、今日头条、知乎、B站、Twitter/X、Facebook等国内外主流平台.",
+                  "item": "string",
+                  "required": false,
+                  "type": "array"
+                },
+                "matchMethods": {
+                  "description": "内容匹配范围(可选, 默认文本匹配).1=文本匹配(正文或标题, 默认);2=OCR图片文字识别匹配;3=语音/视频音频识别匹配;4=场景识别匹配;5=人脸识别匹配;6=仅标题匹配;7=仅正文匹配.可多选, 如[6,7]表示同时在标题和正文中匹配.",
+                  "item": "integer",
+                  "required": false,
+                  "type": "array"
+                },
+                "searchMode": {
+                  "description": "关键词检索模式配置对象(可选, 不填则不按关键词过滤).⚠️ 注意: searchMode 本身不直接接收关键词字符串, 关键词必须放入其内部的 simpleKeyword 子字段(简易模式)或 keywordExps 数组(高级模式)中, 错误示例: {\"searchMode\":\"伊朗局势\"}或{\"searchMode\":{\"keyword\":\"伊朗局势\"}}. 正确示例(搜索'伊朗局势'): {\"searchMode\":{\"searchType\":1,\"simpleKeyword\":{\"anyKeyWord\":[\"伊朗局势\"]}}}.分高级模式(searchType=0, 用布尔逻辑表达式, 需填keywordExps)和简易模式(searchType=1, 用三组关键词组合, 需填simpleKeyword).高级模式适合精确控制, 简易模式配置更直观, 日常搜索推荐使用简易模式.",
+                  "properties": {
+                    "keywordExps": {
+                      "description": "高级模式关键词表达式数组(searchType=0时必填).支持布尔运算符: &(与/AND)、|(或/OR)、!(非/排除)及括号.限制: ①总长度≤200字符;②不支持!!、!&、!| 连写;③括号只支持一层不可嵌套(错误示例: (A&(B|C)));④关键词无需加引号;⑤!后括号内的&自动转为|(如!(A&B)等价于!(A|B)).示例: [\"北京&政策\", \"上海|广州\", \"!(负面|批评)\"]",
+                      "item": {
+                        "type": "string"
+                      },
+                      "required": false,
+                      "type": "array"
+                    },
+                    "queryType": {
+                      "default": false,
+                      "description": "关键词匹配方式: false=模糊匹配(默认, 包含词根变形);true=精确匹配(完全一致).",
+                      "required": false,
+                      "type": "boolean"
+                    },
+                    "searchType": {
+                      "default": 0,
+                      "description": "关键词搜索模式: 0=高级模式(必须同时配置keywordExps字段);1=简易模式(必须同时配置simpleKeyword字段).默认0(高级模式).",
+                      "required": false,
+                      "type": "integer"
+                    },
+                    "simpleKeyword": {
+                      "description": "简易模式关键词配置(searchType=1时必填).⚠️ 关键词必须放入此对象的数组子字段中, 不能直接赋值字符串. 搜索单个词最简写法: {\"anyKeyWord\":[\"伊朗局势\"]}; 多词任一命中: {\"anyKeyWord\":[\"伊朗\",\"中东\",\"核谈判\"]}; 多词同时包含: {\"mustKeyWord\":[\"伊朗\",\"制裁\"]}; 组合过滤: {\"mustKeyWord\":[\"伊朗\"],\"anyKeyWord\":[\"核\",\"导弹\"],\"needExclude\":[\"广告\"]}.三组关键词总长度≤200字符, 不支持!#^&+|(){}[]<>~等特殊符号.",
+                      "properties": {
+                        "anyKeyWord": {
+                          "description": "【简易模式】任意包含的关键词列表.文章包含此列表中任意一个词即满足条件.示例: [\"北京\",\"上海\",\"广州\"] 表示文章含任一城市名即符合.",
+                          "item": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mustKeyWord": {
+                          "description": "【简易模式】必须全部包含的关键词列表.文章必须包含此列表中的每一个词.示例: [\"人工智能\",\"大模型\"] 表示文章需同时含这两个词.",
+                          "item": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "mustKeyWordComplex": {
+                          "description": "【简易模式】必须全部包含的繁体关键词列表.与mustKeyWord功能相同, 专用于匹配繁体中文内容.",
+                          "item": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "needExclude": {
+                          "description": "【简易模式】需要排除的关键词列表.过滤掉含有这些词的文章.示例: [\"广告\",\"推广\",\"营销\"] 用于过滤广告内容.",
+                          "item": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": false,
+                      "type": "object"
+                    }
+                  },
+                  "required": false,
+                  "type": "object"
+                },
+                "searchTime": {
+                  "description": "【必填, 每次调用都必须提供, 不得省略】搜索时间范围配置.必须同时包含 now(当前真实时间)和 realTime(时间范围)两个子字段.realTime 控制时间模式: >0 表示近N天; =-1 表示今天; =0 表示自定义范围(需填 startPubTime 和 endPubTime).",
+                  "properties": {
+                    "endPubTime": {
+                      "description": "自定义时间范围结束时间(realTime=0时必填), 格式: yyyy-MM-dd HH:mm:ss.注意查询范围不含结束时间边界(左闭右开).",
+                      "required": false,
+                      "type": "string"
+                    },
+                    "now": {
+                      "description": "【必填】调用时的实际当前日期时间, 格式: yyyy-MM-dd HH:mm:ss.【重要】必须使用本次对话的真实当前时间: 优先从系统提示、对话上下文或环境变量中获取今日日期；若上下文中有明确的当前日期(如系统提示包含\"今天是XXXX-XX-XX\"), 请直接使用该日期和当前时刻填写此字段.禁止使用模型训练截止日期或任何历史估算时间.示例(若今天是2026-03-17): \"2026-03-17 10:30:00\".",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "realTime": {
+                      "default": 7,
+                      "description": "时间范围快捷选项: -1=今天, 1=近1天, 3=近3天, 7=近7天(默认), 14=近14天, 30=近30天, 0=自定义(需同时填写startPubTime和endPubTime).非0时系统以now为基准自动计算, 忽略startPubTime/endPubTime.",
+                      "required": true,
+                      "type": "integer"
+                    },
+                    "startPubTime": {
+                      "description": "自定义时间范围起始时间(realTime=0时必填), 格式: yyyy-MM-dd HH:mm:ss.查询范围为: startPubTime ≤ 发布时间 < endPubTime.",
+                      "required": false,
+                      "type": "string"
+                    }
+                  },
+                  "required": true,
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "pageInfo": {
+              "description": "分页配置(可选).注意: 系统最多返回前10000条(currentPage × pageSize ≤ 10000).",
+              "properties": {
+                "currentPage": {
+                  "default": 1,
+                  "description": "查询页码(默认1, 即第一页).例: currentPage=2、pageSize=10 则返回第11-20条数据.",
+                  "required": false,
+                  "type": "integer"
+                },
+                "pageSize": {
+                  "default": 10,
+                  "description": "每页返回条数(默认10条).建议按实际需求设置, 避免单次数据量过大.",
+                  "required": false,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "sortInfo": {
+              "description": "排序配置(可选, 默认按发布时间倒序).通过sortField指定排序字段, sortWay指定排序方向.",
+              "properties": {
+                "sortField": {
+                  "default": 1,
+                  "description": "排序字段: 1=发布时间(默认)、2=阅读量、3=转发量、4=评论量、5=点赞量、6=播放量(视频)、7=热度值、8=在看量(微信)、9=采集时间、10=与关键词相关度、11=Gid(全局有序ID)、12=综合排序、13=入ES时间、14=累加互动量(阅读+评论+转发+点赞)、15=收藏量、16=弹幕量(B站)、17=投币量(B站)、18=加权互动量、19=表情总数(Facebook)、20=10W+热文、21=粉丝量.",
+                  "type": "integer"
+                },
+                "sortWay": {
+                  "default": "desc",
+                  "description": "排序方向: desc=倒序从高到低/从新到旧(默认);asc=正序从低到高/从旧到新.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "articleInfo"
+          ],
+          "type": "object"
+        },
+        "name": "article-search"
+      },
+      {
+        "description": "互联网媒体账号/用户检索工具.当用户需要查找某个博主、媒体机构、企业官方账号或社交媒体用户的信息时使用此工具.支持按账号名称关键词、媒体渠道(微博/抖音/微信等)、认证类型(个人/机构/企业)等条件检索, 返回账号详情(粉丝数、发文数、简介、认证信息、地理位置等).注意: 此工具查询的是账号主体信息, 若需搜索文章内容请使用 article-search 工具.\n\n【调用示例】\n示例1 - 按账号名称模糊搜索社交媒体账号: {\"userNames\":[\"人民日报\",\"新华社\"],\"sortInfo\":{\"sortField\":12,\"sortWay\":\"desc\"},\"pageInfo\":{\"currentPage\":1,\"pageSize\":10}}\n示例2 - 搜索境内官方认证企业/机构号: {\"userNames\":[\"华为\"],\"verifiedTypes\":[2,3],\"isForeignMedia\":0,\"sortInfo\":{\"sortField\":12,\"sortWay\":\"desc\"},\"pageInfo\":{\"currentPage\":1,\"pageSize\":10}}\n示例3 - 按站点名称查询新闻网站媒体信息: {\"websiteNames\":[\"人民网\",\"新华网\",\"央视新闻\"],\"sortInfo\":{\"sortField\":9,\"sortWay\":\"desc\"},\"pageInfo\":{\"currentPage\":1,\"pageSize\":10}}",
+        "inputSchema": {
+          "properties": {
+            "dataSources": {
+              "description": "媒体平台/渠道类型过滤列表(可选, 不填则查询所有渠道).渠道代码值需通过字典接口获取.常见渠道涵盖微博、微信、抖音、快手、Twitter/X、Facebook、Instagram等国内外主流社交媒体平台.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "isForeignMedia": {
+              "description": "境内外媒体过滤(可选, 默认查询全部). 0=仅查境内媒体账号; 1=仅查境外媒体账号(含港澳台及海外媒体); 不传或传-1=查询境内外全部账号.涉及国际舆情分析时建议传1; 仅关注国内舆情时建议传0以减少噪音.",
+              "type": "integer"
+            },
+            "pageInfo": {
+              "description": "分页配置(可选).注意: 系统最多返回前10000条(currentPage × pageSize ≤ 10000).",
+              "properties": {
+                "currentPage": {
+                  "default": 1,
+                  "description": "查询页码(默认1, 即第一页).",
+                  "required": false,
+                  "type": "integer"
+                },
+                "pageSize": {
+                  "default": 10,
+                  "description": "每页返回条数(默认10条, 最大200条).",
+                  "required": false,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "sortInfo": {
+              "description": "排序配置(可选, 默认按插入时间倒序).通过sortField指定排序字段, sortWay指定排序方向.",
+              "properties": {
+                "sortField": {
+                  "default": 9,
+                  "description": "账号排序字段(默认9-插入时间): 9=数据首次插入时间、10=与搜索关键词相关度(按名称搜索时推荐)、11=账号信息更新时间、12=粉丝总数(按影响力排序时使用)、13=全局有序ID(Gid)、14=标签等级(账号影响力标签级别)、15=数据入ES时间.",
+                  "type": "integer"
+                },
+                "sortWay": {
+                  "default": "desc",
+                  "description": "排序方向: desc=倒序从高到低(默认);asc=正序从低到高.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "userIds": {
+              "description": "账号ID精确查询列表(可选).用于按平台账号ID精确检索, 最多20个, 所有ID总字符长度≤300.适合已知具体账号ID时精确定位账号, 比 userNames 模糊匹配更准确.注意: 网站、电子报纸类媒体无账号ID.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "userNames": {
+              "description": "账号名称/昵称关键词列表(可选).用于模糊匹配账号名称, 最多20个关键词, 所有关键词总字符长度≤300.注意: 网站、电子报纸、新闻客户端类型媒体无账号名称概念, 无法通过此字段查询; 对于网站/新闻类媒体请改用 websiteNames 字段.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "verifiedTypes": {
+              "description": "账号认证类型过滤(可选, 默认返回所有认证状态的账号).0=未认证普通账号;1=个人认证(蓝V/金V等);2=机构组织认证(政府机关、社会组织);3=公司企业认证(官方企业号);4=其他认证类型.可多选, 如[2,3]表示只返回机构和企业认证账号.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "websiteNames": {
+              "description": "站点/媒体名称列表(可选).用于按媒体机构名称检索, 最多20个, 总字符长度≤300.适用于网站、新闻客户端、论坛等无账号名称概念的媒体类型. 例如: ['人民网', '新华网', '央视新闻']. 与 userNames 互补使用.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "name": "media-account-search"
+      },
+      {
+        "description": "根据文章唯一标识(uuid)和发布时间获取单篇发文的完整详情.当用户需要查看某篇具体文章的全文内容、完整互动数据(阅读/评论/点赞/转发/播放量等)、图片视频链接、IP归属地、地理签到信息等完整字段时使用此工具.通常与 article-search 工具配合使用: 先通过 article-search 搜索文章列表获取目标文章的uuid和publishTime, 再调用本工具获取该文章完整详情.\n\n【调用示例】\n示例1 - 基础获取文章详情(最常用): {\"uuid\":\"a1b2c3d4e5f6\",\"publishTime\":\"2026-03-15 14:30:00\"}\n示例2 - 获取详情并高亮关键词(简易模式): {\"uuid\":\"a1b2c3d4e5f6\",\"publishTime\":\"2026-03-15 14:30:00\",\"isHighLight\":true,\"searchMode\":{\"searchType\":1,\"simpleKeyword\":{\"mustKeyWord\":[\"人工智能\"],\"anyKeyWord\":[\"大模型\"]}}}\n示例3 - 获取详情并高亮关键词(高级表达式模式): {\"uuid\":\"a1b2c3d4e5f6\",\"publishTime\":\"2026-03-15 14:30:00\",\"isHighLight\":true,\"searchMode\":{\"searchType\":0,\"keywordExps\":[\"(华为|小米)&手机\"]}}",
+        "inputSchema": {
+          "properties": {
+            "isHighLight": {
+              "default": false,
+              "description": "是否高亮显示关键词(可选, 默认false不高亮).true=在返回的标题和正文中对 searchMode 指定的关键词进行高亮标注(需同时传入 searchMode);false=返回原始文本内容, 此时 searchMode 无需填写.",
+              "type": "boolean"
+            },
+            "publishTime": {
+              "description": "文章发布时间(必填), 格式: yyyy-MM-dd HH:mm:ss, 例: 2024-01-15 10:30:00.可从 article-search 工具返回结果的 publishTime 字段获取.此字段用于ES索引路由, 必须与文章实际发布时间精确匹配, 否则将查询不到数据.",
+              "type": "string"
+            },
+            "searchMode": {
+              "description": "关键词高亮配置(可选, 仅 isHighLight=true 时生效).指定需要在标题/正文中高亮的关键词, 结构与 article-search 中的 articleInfo.searchMode 相同.分高级模式(searchType=0, 填 keywordExps)和简易模式(searchType=1, 填 simpleKeyword).不传则高亮不生效.",
+              "properties": {
+                "keywordExps": {
+                  "description": "高级模式高亮表达式(searchType=0 时填写).语法与 article-search 的 keywordExps 一致.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "searchType": {
+                  "default": 0,
+                  "description": "高亮关键词模式: 0=高级模式(使用 keywordExps 布尔表达式);1=简易模式(使用 simpleKeyword 三组关键词).与 article-search 的 searchMode.searchType 含义相同.",
+                  "type": "integer"
+                },
+                "simpleKeyword": {
+                  "description": "简易模式高亮关键词(searchType=1 时填写).",
+                  "properties": {
+                    "anyKeyWord": {
+                      "description": "任意包含其一的高亮词.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "mustKeyWord": {
+                      "description": "必须全部包含的高亮词.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "needExclude": {
+                      "description": "需要排除的词(不参与高亮).",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "uuid": {
+              "description": "文章全局唯一标识符(必填).可从 article-search 工具返回结果的 uuid 字段获取.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "uuid",
+            "publishTime"
+          ],
+          "type": "object"
+        },
+        "name": "article-detail"
+      }
+    ]
+  }
+}
