@@ -1,6 +1,8 @@
 package com.reportai.hub.report.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reportai.hub.common.context.UserContext;
+import com.reportai.hub.knowledge.dto.RagChunkHit;
 import com.reportai.hub.report.dto.RewriteMode;
 import com.reportai.hub.report.dto.RewriteRequest;
 import com.reportai.hub.report.service.ReportGenerationService;
@@ -16,8 +18,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Tag(name = "报告生成 / 改写（SSE 流式）")
@@ -31,6 +37,7 @@ public class ReportStreamController {
 
     private final ReportGenerationService generationService;
     private final RewriteService rewriteService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final Executor sseExecutor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "report-sse-" + System.nanoTime());
@@ -46,7 +53,9 @@ public class ReportStreamController {
         Long operatorId = UserContext.getUserId();
         sseExecutor.execute(() -> runStream(emitter, "generate",
                 (onToken, onDone) ->
-                        generationService.streamGenerate(id, operatorId, onToken, onDone)));
+                        generationService.streamGenerate(id, operatorId,
+                                hits -> sendSafely(emitter, "chunks", toChunksJson(hits)),
+                                onToken, onDone)));
         return emitter;
     }
 
@@ -101,6 +110,39 @@ public class ReportStreamController {
             // 客户端已断开，放弃后续 send；不向外抛。
             log.debug("SSE client disconnected: {}", ex.getMessage());
         }
+    }
+
+    /**
+     * 把 RAG 命中的 chunk 列表序列化成 SSE chunks 事件的 JSON payload。
+     * 字段与前端"引用溯源"面板约定：index（1-based，对应正文 [n]）、id、filename、
+     * chunkIndex、content、score。content 适度截断，避免 SSE 单事件过大。
+     */
+    private String toChunksJson(List<RagChunkHit> hits) {
+        if (hits == null || hits.isEmpty()) return "[]";
+        List<Map<String, Object>> payload = IntStream.range(0, hits.size())
+                .mapToObj(i -> {
+                    RagChunkHit h = hits.get(i);
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("index", i + 1);
+                    m.put("id", h.getChunkId());
+                    m.put("filename", h.getFilename());
+                    m.put("chunkIndex", h.getChunkIndex());
+                    m.put("content", truncate(h.getContent(), 400));
+                    m.put("score", h.getScore());
+                    return m;
+                })
+                .toList();
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            log.warn("serialize chunks failed: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "…";
     }
 
     @FunctionalInterface

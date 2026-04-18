@@ -62,6 +62,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
     @Override
     public void streamGenerate(Long reportId, Long operatorId,
+                               Consumer<List<RagChunkHit>> onChunks,
                                Consumer<String> onToken, Runnable onDone) {
         Report report = reportMapper.selectById(reportId);
         if (report == null) throw new BusinessException("报告不存在: " + reportId);
@@ -80,6 +81,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         List<RagChunkHit> hits = Collections.emptyList();
         if (report.getKbId() != null) {
             hits = ragSearchService.searchRaw(report.getKbId(), query, RAG_TOP_K);
+        }
+        // 2.1 先把命中的 chunk 清单推给前端（SSE chunks 事件），供"引用溯源"展示。
+        //     失败不阻塞主流程 —— 溯源只是增强，生成本身更重要。
+        if (onChunks != null) {
+            try {
+                onChunks.accept(hits);
+            } catch (RuntimeException ex) {
+                log.warn("push chunks event failed, will continue generation: {}", ex.getMessage());
+            }
         }
         String ragContext = renderRagContext(hits);
 
