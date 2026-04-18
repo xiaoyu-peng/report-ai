@@ -257,13 +257,15 @@
           placeholder="报告内容将在此处流式显示..."
         />
 
-        <!-- Markdown 预览（含 [n] 角标，点击跳转溯源面板） -->
+        <!-- Markdown 预览（含 [n] 角标，点击跳转溯源面板，段落级改写） -->
         <div
           v-else-if="content && viewMode === 'preview'"
           ref="previewEl"
-          class="report-preview"
-          @click="handleCiteClick"
-          v-html="renderedHtml"
+          class="report-preview section-editable"
+          @click="handlePreviewClick"
+          @mouseover="handleSectionHover"
+          @mouseout="activeSectionId = -1"
+          v-html="renderedSectionHtml"
         />
       </el-card>
     </div>
@@ -436,7 +438,7 @@ const progressStep = ref<{ step: string; stepIndex: number; totalSteps: number }
 
 // 编辑 / 预览切换。生成/改写过程中默认编辑态（让用户看流式 token），完成后跳到预览态以显示角标。
 const viewMode = ref<'edit' | 'preview'>('edit')
-const renderedHtml = computed(() => renderReportMarkdown(content.value))
+const renderedSectionHtml = computed(() => renderReportMarkdown(content.value, true))
 const streamingHtml = computed(() => {
   if (!content.value) return ''
   const html = renderReportMarkdown(content.value)
@@ -445,6 +447,9 @@ const streamingHtml = computed(() => {
 
 const previewEl = ref<HTMLDivElement | null>(null)
 const streamingEl = ref<HTMLDivElement | null>(null)
+
+const activeSectionId = ref(-1)
+const sectionRewriting = ref(false)
 
 // In-flight abort controller for streaming requests
 let activeController: AbortController | null = null
@@ -876,6 +881,91 @@ function confirmMcpImport() {
   mcpArticles.value = [...mcpArticles.value, ...articles]
   showMcpDialog.value = false
   ElMessage.success(`已引入 ${articles.length} 篇舆情文章`)
+}
+
+function handleSectionHover(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (!target) return
+  const block = target.closest('.section-block') as HTMLElement | null
+  if (block) {
+    activeSectionId.value = Number(block.dataset.sectionId ?? -1)
+  }
+}
+
+function handlePreviewClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (!target) return
+
+  const actionBtn = target.closest('.section-action-btn') as HTMLElement | null
+  if (actionBtn) {
+    const mode = actionBtn.dataset.mode
+    const block = actionBtn.closest('.section-block') as HTMLElement | null
+    if (block && mode) {
+      handleSectionRewrite(block, mode)
+    }
+    return
+  }
+
+  handleCiteClick(e)
+}
+
+async function handleSectionRewrite(block: HTMLElement, mode: string) {
+  if (!currentReportId.value || sectionRewriting.value) return
+  const sectionText = block.textContent?.trim() || ''
+  if (!sectionText) return
+
+  sectionRewriting.value = true
+  const modeLabels: Record<string, string> = {
+    rewrite: '改写',
+    expand: '扩写',
+    condense: '精简'
+  }
+
+  try {
+    const resp = await fetch(`/api/v1/reports/${currentReportId.value}/rewrite-section`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ content: sectionText, mode, instruction: '' })
+    })
+
+    if (!resp.ok) throw new Error('段落改写请求失败')
+
+    const reader = resp.body?.getReader()
+    if (!reader) throw new Error('无法读取流')
+
+    const decoder = new TextDecoder()
+    let newSection = ''
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('event:token')) continue
+        if (line.startsWith('data:')) {
+          const data = line.slice(5)
+          if (data) newSection += data
+        }
+      }
+    }
+
+    if (newSection.trim()) {
+      content.value = content.value.replace(sectionText, newSection.trim())
+      ElMessage.success(`段落${modeLabels[mode] || mode}完成`)
+    }
+  } catch (e) {
+    console.error('段落改写失败:', e)
+    ElMessage.error('段落改写失败')
+  } finally {
+    sectionRewriting.value = false
+  }
 }
 
 async function saveReport() {
@@ -1314,5 +1404,51 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 .progress-step.done .step-label {
   color: #67c23a;
+}
+
+/* 段落级改写 */
+.section-editable :deep(.section-block) {
+  position: relative;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.section-editable :deep(.section-block:hover) {
+  background: rgba(64, 158, 255, 0.04);
+}
+.section-editable :deep(.section-block:hover::after) {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+}
+.section-editable :deep(.section-actions) {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  gap: 4px;
+  z-index: 10;
+}
+.section-editable :deep(.section-block:hover .section-actions) {
+  display: flex;
+}
+.section-action-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid #d9ecff;
+  background: #ecf5ff;
+  color: #409eff;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.section-action-btn:hover {
+  background: #409eff;
+  color: #fff;
+  border-color: #409eff;
 }
 </style>

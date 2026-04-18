@@ -1,13 +1,5 @@
 import MarkdownIt from 'markdown-it'
 
-/**
- * Shared markdown-it instance for report content rendering.
- *
- * - `html: false` — backend is trusted but we still refuse raw HTML to avoid
- *   accidental injection of angle-bracket tokens as markup.
- * - `linkify` + `breaks` tuned for Chinese report text where soft line breaks
- *   should be preserved as paragraph separators.
- */
 export const md: MarkdownIt = new MarkdownIt({
   html: false,
   linkify: true,
@@ -15,20 +7,9 @@ export const md: MarkdownIt = new MarkdownIt({
   typographer: false
 })
 
-/**
- * Render markdown, then post-process `[n]` citation markers into `<sup>` tags
- * carrying `data-idx`. We do the substitution AFTER markdown-it runs so that
- * markdown-it doesn't accidentally swallow them (e.g. mistake `[1]` for a
- * reference-style link).
- *
- * The regex intentionally skips markers already wrapped in an attribute value
- * by looking for a preceding `"` — belt-and-suspenders against double wrapping.
- */
-export function renderReportMarkdown(raw: string): string {
+export function renderReportMarkdown(raw: string, sectionEditable = false): string {
   if (!raw) return ''
   const html = md.render(raw)
-  // Only replace [n] patterns that appear in text content, not inside tags.
-  // Simple approach: walk character by character tracking angle-bracket depth.
   let depth = 0
   let out = ''
   for (let i = 0; i < html.length; i++) {
@@ -44,7 +25,6 @@ export function renderReportMarkdown(raw: string): string {
       continue
     }
     if (depth === 0 && ch === '[') {
-      // Try to match [digits]
       const m = html.slice(i).match(/^\[(\d+)\]/)
       if (m) {
         const idx = m[1]
@@ -55,5 +35,40 @@ export function renderReportMarkdown(raw: string): string {
     }
     out += ch
   }
-  return out
+
+  if (!sectionEditable) return out
+
+  let sectionIndex = 0
+  let inSection = false
+  const result: string[] = []
+  const sectionBtns = `<div class="section-actions"><button class="section-action-btn" data-mode="rewrite">改写</button><button class="section-action-btn" data-mode="expand">扩写</button><button class="section-action-btn" data-mode="condense">精简</button></div>`
+
+  const parts = out.split(/(<h[23][^>]*>.*?<\/h[23]>)/gs)
+
+  for (const part of parts) {
+    if (/<h[23][^>]*>/.test(part)) {
+      if (inSection) {
+        result.push(sectionBtns)
+        result.push('</div>')
+      }
+      result.push(`<div class="section-block" data-section-id="${sectionIndex++}">`)
+      result.push(part)
+      inSection = true
+    } else {
+      if (!inSection && part.trim()) {
+        result.push(`<div class="section-block" data-section-id="${sectionIndex++}">`)
+        result.push(part)
+        result.push(sectionBtns)
+        result.push('</div>')
+      } else {
+        result.push(part)
+      }
+    }
+  }
+  if (inSection) {
+    result.push(sectionBtns)
+    result.push('</div>')
+  }
+
+  return result.join('')
 }

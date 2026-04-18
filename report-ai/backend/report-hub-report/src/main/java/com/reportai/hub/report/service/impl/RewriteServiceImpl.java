@@ -86,4 +86,67 @@ public class RewriteServiceImpl implements RewriteService {
         onDone.run();
         return v;
     }
+
+    @Override
+    public void streamRewriteSection(Long reportId,
+                                     String sectionContent,
+                                     String mode,
+                                     String instruction,
+                                     Long operatorId,
+                                     Consumer<String> onToken,
+                                     Runnable onDone) {
+        if (sectionContent == null || sectionContent.isBlank()) {
+            throw new BusinessException("段落内容为空，无法改写");
+        }
+
+        String systemPrompt = switch (mode) {
+            case "expand" -> "你是一位专业报告撰写专家。请对用户给出的段落进行内容扩展，补充更多细节、数据支撑和深度分析，保持原有风格和语气。直接输出扩展后的段落，不要加前缀说明。";
+            case "condense" -> "你是一位专业报告撰写专家。请对用户给出的段落进行精简压缩，保留核心观点和关键信息，去除冗余表述，使文字更加凝练有力。直接输出精简后的段落，不要加前缀说明。";
+            default -> "你是一位专业报告撰写专家。请对用户给出的段落进行改写优化，提升表达质量和专业度。" +
+                    (instruction != null && !instruction.isBlank() ? "改写要求：" + instruction : "") +
+                    "直接输出改写后的段落，不要加前缀说明。";
+        };
+
+        String userPrompt = "请改写以下段落：\n\n" + sectionContent;
+
+        StringBuilder full = new StringBuilder();
+        llmClient.stream(systemPrompt, userPrompt, token -> {
+            full.append(token);
+            onToken.accept(token);
+        }, () -> {});
+
+        String newSection = full.toString().trim();
+
+        Report report = reportMapper.selectById(reportId);
+        if (report != null && report.getContent() != null) {
+            String updatedContent = report.getContent().replace(sectionContent.trim(), newSection);
+            if (!updatedContent.equals(report.getContent())) {
+                report.setContent(updatedContent);
+                report.setWordCount(updatedContent.length());
+                reportMapper.updateById(report);
+
+                ReportVersion latest = versionMapper.selectOne(
+                        new LambdaQueryWrapper<ReportVersion>()
+                                .eq(ReportVersion::getReportId, reportId)
+                                .orderByDesc(ReportVersion::getVersionNum)
+                                .last("LIMIT 1"));
+                int baseVer = latest == null ? 0 : latest.getVersionNum();
+                ReportVersion v = new ReportVersion();
+                v.setReportId(reportId);
+                v.setVersionNum(baseVer + 1);
+                v.setTitle(report.getTitle());
+                v.setContent(updatedContent);
+                v.setSourceMode("rewrite_section_" + mode);
+                v.setWordCount(updatedContent.length());
+                v.setCreatedBy(operatorId);
+                v.setChangeSummary("段落改写：%s".formatted(mode));
+                versionMapper.insert(v);
+
+                log.info("report {} section rewritten ({}): {} chars -> v{}",
+                        reportId, mode, updatedContent.length(), v.getVersionNum());
+            }
+        }
+
+        onDone.run();
+    }
 }

@@ -88,6 +88,23 @@ public class ReportStreamController {
         return emitter;
     }
 
+    @Operation(summary = "SSE 流式段落改写（对指定段落进行改写/扩写/精简）")
+    @PostMapping(value = "/{id}/rewrite-section", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter rewriteSection(@PathVariable Long id,
+                                     @RequestBody Map<String, String> body,
+                                     HttpServletResponse response) {
+        applySseHeaders(response);
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        Long operatorId = UserContext.getUserId();
+        String sectionContent = body.getOrDefault("content", "");
+        String mode = body.getOrDefault("mode", "rewrite");
+        String instruction = body.getOrDefault("instruction", "");
+        sseExecutor.execute(() -> runStream(emitter, "rewrite-section:" + mode,
+                (onToken, onDone) ->
+                        rewriteService.streamRewriteSection(id, sectionContent, mode, instruction, operatorId, onToken, onDone)));
+        return emitter;
+    }
+
     /**
      * 指示 nginx/中间代理不要缓冲 SSE 流，并禁止 HTTP 缓存。
      * X-Accel-Buffering: no 对 nginx / ingress-nginx 是"强制立刻刷到客户端"的信号，
