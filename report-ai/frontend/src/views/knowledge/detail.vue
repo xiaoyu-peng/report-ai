@@ -24,7 +24,38 @@
       {{ kb.description }}
     </div>
 
-    <el-card shadow="never" class="table-card">
+    <div class="search-bar">
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索知识库内容..."
+        clearable
+        @keyup.enter="handleSearch"
+      >
+        <template #append>
+          <el-button @click="handleSearch" :loading="searching">搜索</el-button>
+        </template>
+      </el-input>
+    </div>
+
+    <div v-if="searchResults.length > 0" class="search-results">
+      <div class="results-header">
+        <span>搜索结果（{{ searchResults.length }} 条）</span>
+        <el-button size="small" text @click="clearSearch">清除搜索</el-button>
+      </div>
+      <div class="results-list">
+        <div v-for="(hit, i) in searchResults" :key="i" class="result-card">
+          <div class="result-head">
+            <span class="result-idx">[{{ i + 1 }}]</span>
+            <span class="result-file">{{ hit.filename || '文档' }}</span>
+            <el-tag size="small" effect="plain">第 {{ hit.chunkIndex ?? 0 }} 段</el-tag>
+            <span class="result-score">相关度 {{ hit.score?.toFixed(2) }}</span>
+          </div>
+          <div class="result-body">{{ hit.content }}</div>
+        </div>
+      </div>
+    </div>
+
+    <el-card v-if="searchResults.length === 0" shadow="never" class="table-card">
       <el-table :data="documents" v-loading="loading" style="width: 100%">
         <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
@@ -78,6 +109,7 @@ import {
   getDocuments,
   uploadDocument,
   deleteDocument,
+  searchKnowledge,
   type KnowledgeBase,
   type KnowledgeDocument
 } from '@/api/knowledge'
@@ -89,6 +121,10 @@ const kbId = Number(route.params.id)
 const kb = ref<KnowledgeBase | null>(null)
 const documents = ref<KnowledgeDocument[]>([])
 const loading = ref(false)
+
+const searchQuery = ref('')
+const searching = ref(false)
+const searchResults = ref<any[]>([])
 
 onMounted(async () => {
   await Promise.all([loadKb(), loadDocuments()])
@@ -164,6 +200,26 @@ async function handleDelete(row: KnowledgeDocument) {
     console.error('删除文档失败:', e)
   }
 }
+
+async function handleSearch() {
+  if (!searchQuery.value.trim()) return
+  searching.value = true
+  try {
+    const res = await searchKnowledge(kbId, searchQuery.value.trim())
+    const data = (res as any).data
+    searchResults.value = data?.hits || data || []
+  } catch (e) {
+    console.error('搜索失败:', e)
+    ElMessage.error('搜索失败')
+  } finally {
+    searching.value = false
+  }
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchResults.value = []
+}
 </script>
 
 <style scoped>
@@ -202,5 +258,54 @@ async function handleDelete(row: KnowledgeDocument) {
   color: #409eff;
   margin-right: 6px;
   vertical-align: middle;
+}
+.search-bar {
+  margin-bottom: 16px;
+}
+.search-results {
+  margin-bottom: 16px;
+}
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #606266;
+}
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.result-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fafbfc;
+}
+.result-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.result-idx {
+  color: #409eff;
+  font-weight: 700;
+}
+.result-file {
+  color: #606266;
+  flex: 1;
+}
+.result-score {
+  color: #909399;
+  font-size: 11px;
+}
+.result-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #303133;
 }
 </style>

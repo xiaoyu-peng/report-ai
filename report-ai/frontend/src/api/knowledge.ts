@@ -43,3 +43,6 @@ export const uploadDocument = (kbId: number, file: File) => {
 
 export const deleteDocument = (docId: number) =>
   request.delete(`/v1/knowledge/documents/${docId}`)
+
+export const searchKnowledge = (kbId: number, query: string, topK = 8) =>
+  request.get(`/v1/knowledge/bases/${kbId}/search`, { params: { query, topK } })

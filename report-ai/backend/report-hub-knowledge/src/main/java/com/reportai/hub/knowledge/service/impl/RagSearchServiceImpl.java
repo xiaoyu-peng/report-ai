@@ -6,10 +6,12 @@ import com.reportai.hub.knowledge.mapper.KnowledgeChunkMapper;
 import com.reportai.hub.knowledge.service.RagSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -19,6 +21,9 @@ import java.util.stream.Collectors;
 public class RagSearchServiceImpl implements RagSearchService {
 
     private final KnowledgeChunkMapper chunkMapper;
+    private final StringRedisTemplate redisTemplate;
+
+    private static final long RAG_CACHE_TTL_SECONDS = 300;
 
     /** BOOLEAN MODE 保留字符，需要从用户 query 中剔除。 */
     private static final Pattern BOOLEAN_RESERVED =
@@ -39,9 +44,31 @@ public class RagSearchServiceImpl implements RagSearchService {
     @Override
     public List<RagChunkHit> searchRaw(Long kbId, String query, int topK) {
         if (query == null || query.isBlank()) return List.of();
+
+        String cacheKey = "rag:" + kbId + ":" + Integer.toHexString(query.hashCode()) + ":" + topK;
+        try {
+            String cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                log.debug("RAG cache hit: {}", cacheKey);
+                com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+                return om.readValue(cached, om.getTypeFactory().constructCollectionType(List.class, RagChunkHit.class));
+            }
+        } catch (Exception e) {
+            log.warn("RAG cache read failed, fallback to DB: {}", e.getMessage());
+        }
+
         String expr = toBooleanModeExpression(query);
         log.debug("RAG search kb={} topK={} expr={}", kbId, topK, expr);
-        return chunkMapper.searchFulltext(kbId, expr, topK);
+        List<RagChunkHit> hits = chunkMapper.searchFulltext(kbId, expr, topK);
+
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            redisTemplate.opsForValue().set(cacheKey, om.writeValueAsString(hits), RAG_CACHE_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("RAG cache write failed: {}", e.getMessage());
+        }
+
+        return hits;
     }
 
     /**
