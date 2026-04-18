@@ -47,7 +47,12 @@ export interface UpdateReportParams {
   content?: string
 }
 
-export type RewriteMode = 'DATA_UPDATE' | 'ANGLE_SHIFT' | 'EXPAND' | 'STYLE_SHIFT'
+export type RewriteMode =
+  | 'DATA_UPDATE'
+  | 'ANGLE_SHIFT'
+  | 'EXPAND'
+  | 'STYLE_SHIFT'
+  | 'CONTINUATION'
 
 export interface RewriteParams {
   mode: RewriteMode

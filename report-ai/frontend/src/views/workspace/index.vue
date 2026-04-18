@@ -155,6 +155,7 @@
                     <el-dropdown-item command="ANGLE_SHIFT">视角调整（换观点/受众）</el-dropdown-item>
                     <el-dropdown-item command="EXPAND">内容扩展（补案例/章节）</el-dropdown-item>
                     <el-dropdown-item command="STYLE_SHIFT">风格转换（正式↔通俗）</el-dropdown-item>
+                    <el-dropdown-item command="CONTINUATION" divided>续写新章节（原稿保留）</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -537,11 +538,30 @@ async function handleRewrite(mode: RewriteMode) {
     } catch {
       return
     }
+  } else if (mode === 'CONTINUATION') {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '请描述要续写的新章节（例如：补一章"风险与对策" / 延伸讨论 2026 年趋势）',
+        '续写新章节',
+        {
+          confirmButtonText: '开始续写',
+          cancelButtonText: '取消',
+          inputType: 'textarea',
+          inputPlaceholder: '新章节的主题或要点...',
+          inputValidator: (v) => (v && v.trim().length > 0) || '请输入新章节主题'
+        }
+      )
+      instruction = value
+    } catch {
+      return
+    }
   }
 
   rewriting.value = true
   const originalContent = content.value
-  content.value = '' // clear to receive streamed rewritten content
+  // CONTINUATION：原稿保留不变，SSE 流出来的新章节追加到末尾；其他模式清空后接收整稿。
+  const isContinuation = mode === 'CONTINUATION'
+  if (!isContinuation) content.value = ''
   // 改写期同样先回到编辑态以便查看 token；完成后若仍有正文再切回预览。
   viewMode.value = 'edit'
 
@@ -571,8 +591,19 @@ async function handleRewrite(mode: RewriteMode) {
       throw new Error(`改写接口返回 ${resp.status}`)
     }
 
+    // 续写：首个 token 到达前先插一个段落分隔，避免新章节与原稿末行粘连。
+    let continuationSeparatorInserted = false
+
     await consumeSseStream(resp, {
-      onToken: (t) => { content.value += t },
+      onToken: (t) => {
+        if (isContinuation && !continuationSeparatorInserted) {
+          if (!content.value.endsWith('\n\n')) {
+            content.value += content.value.endsWith('\n') ? '\n' : '\n\n'
+          }
+          continuationSeparatorInserted = true
+        }
+        content.value += t
+      },
       // 改写不触发 RAG 重检索，后端一般不会再发 chunks；若发则刷新。
       onChunks: (hits) => { chunks.value = hits },
       onError: (msg) => { streamError = msg || '改写失败' }

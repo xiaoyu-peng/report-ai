@@ -58,7 +58,13 @@ public class RewriteServiceImpl implements RewriteService {
             onToken.accept(token);
         }, () -> {});
 
-        String body = full.toString();
+        // CONTINUATION 下，LLM 只产出新章节；服务端负责把原稿保持不变地拼到前面。
+        // 前端同步约定：continuation 时不清空正文，只把新 token 追加到末尾 —— 这样
+        // SSE 流出来的内容恰好是"新章节"，视觉上像是在原文末尾接着写。
+        String llmOut = full.toString();
+        String body = (mode == RewriteMode.CONTINUATION)
+                ? original + (original.endsWith("\n") ? "\n" : "\n\n") + llmOut.stripLeading()
+                : llmOut;
         ReportVersion v = new ReportVersion();
         v.setReportId(reportId);
         v.setVersionNum(baseVer + 1);

@@ -75,7 +75,11 @@ public final class Prompts {
     public static final String REWRITE_SYSTEM_BASE = """
             你是一位资深报告改写编辑。改写时必须保留原稿的事实内容（除非模式明确要求替换），
             并严格遵循指定的改写模式。输出"改写后的完整报告正文"，不要解释、不要 Markdown
-            代码块包裹。每段保留或新增引用标注【来源N】。
+            代码块包裹。
+
+            【引用规范】
+            原稿正文里若已存在 `[n]` 行内角标，请原样保留，不要改动编号也不要替换成"【来源N】"
+            之类的旧式标注；不要新造任何编号（除非模式明确要求、且你知道对应分块）。
             """;
 
     public static String rewriteSystemFor(RewriteMode mode, String instruction) {
@@ -102,6 +106,16 @@ public final class Prompts {
                     转换方向：%s（例：正式 → 通俗；中文 → 英文；书面 → 口语）。
                     保留核心观点与引用，不得改变事实。
                     """.formatted(nz(instruction, "正式 → 通俗"));
+            case CONTINUATION -> """
+                    【改写模式：续写新章节】
+                    **只输出新章节**，不要复述或改写任何原稿内容。新章节要求：
+                    1. 接续原稿末尾，使用与原稿一致的章节编号风格（若原稿最后是"三、..."，
+                       新章节从"四、..."开始；若用"（一）..."层级，新章节沿用同层级编号）；
+                    2. 语气 / 段落长度 / 数据密度必须贴合原稿；
+                    3. 不要添加标题页、摘要、参考文献等整稿结构，只写正文段落；
+                    4. 若引用了新事实而原稿无对应 `[n]` 角标，不要硬造编号，用自然语言承接。
+                    新章节主题 / 要求：%s
+                    """.formatted(nz(instruction, "在原稿结论之后补充 1 个新章节，推进论述"));
         };
         return REWRITE_SYSTEM_BASE + "\n\n" + modeClause;
     }
@@ -111,7 +125,7 @@ public final class Prompts {
                 【原稿】
                 %s
 
-                请基于上方模式要求输出改写后的完整新报告。
+                请基于上方模式要求输出。
                 """.formatted(originalContent);
     }
 
