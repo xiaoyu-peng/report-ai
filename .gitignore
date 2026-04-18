@@ -32,6 +32,7 @@ CLAUDE.md
 # IDE
 .vscode/
 .claude/settings.local.json
+.doubao
 
 # Docker volumes (should never be committed)
 mysql_data/
