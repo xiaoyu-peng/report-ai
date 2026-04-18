@@ -19,6 +19,7 @@
 | 2026-04-18 12:16 | Bolt | Claude Code + Anthropic Messages API + JDK HttpClient SSE | Task 5 report 模块（27 类）：Report/Template/Version 3 表 + `LlmClient` 抽象 + `ClaudeLlmClient` 裸 SSE 解析 + `Prompts` 中心化（风格分析/生成/4 模式改写）+ 4 个 Service + 4 个 Controller（含 SseEmitter `GET /generate` 与 `POST /rewrite`）| `7e60c09` |
 | 2026-04-18 16:08 | Bolt | Claude Code + Maven 3.9 + JDK 17 | Task 6 api 模块：父 POM 注册 5 子模块 + Spring Boot 主入口（@MapperScan 6 个 mapper 包）+ AuthController 从第一站移植 + DashboardController stats + application.yml 全 env var 注入；首次打出 114 MB fat jar | `ed71523` |
 | 2026-04-18 16:27 | Arch | Claude Code + Volcengine Ark SDK 2.0.0 | LLM 架构下沉：按"怎么调 LLM 属 common、调 LLM 干什么属业务"原则，把 `LlmClient/LlmProperties/ClaudeLlmClient` 从 report 下沉到 common/llm；新增 `DoubaoLlmClient`，两客户端用 `@ConditionalOnProperty(provider=claude/doubao)` 互斥装配；删除 4 个 stray 僵尸文件 + pom excludes；application.yml 默认切豆包 | `897ecf5` |
+| 2026-04-18 16:45 | Leo + Pixel×4 | Claude Code 多 Agent 并行调度（superpowers:dispatching-parallel-agents）| Task 7+8 前端：Leo 拆解 4 个互斥独占任务（Scaffold / Knowledge / Workspace / Templates+Docker）、先串 A 搭骨架再并发 B/C/D；Agent A 从第一站复制 layouts/stores/utils/login/users/logs + 新写 router + 3001 端口 Vite 代理；Agent B 知识库 CRUD（list 卡片 + detail 文档管理）；Agent C 工作台 SSE 流式生成（fetch+ReadableStream+UTF-8 streaming decoder，多字节不拆 + `\n\n` 帧解析 + [DONE] 哨兵 + AbortController）+ Dashboard 4 stat 卡；Agent D 模板中心 + 报告库 + Dockerfile + nginx.conf（proxy_read_timeout 300s for SSE）。`npm run build` 3.15s 产出 21 个 chunk | 本 commit |
 
 ## 使用的 AI 工具汇总
 
