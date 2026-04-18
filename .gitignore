@@ -1,0 +1,38 @@
+.DS_Store
+.idea/
+*.iml
+
+# Python / node / java build artifacts
+node_modules/
+dist/
+target/
+*.class
+.mvn/
+.gradle/
+build/
+
+# Env & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Logs & temp
+*.log
+logs/
+tmp/
+
+# OS
+Thumbs.db
+
+# Claude
+CLAUDE.md
+
+# IDE
+.vscode/
+.claude/settings.local.json
+
+# Docker volumes (should never be committed)
+mysql_data/
+redis_data/
+uploads/
