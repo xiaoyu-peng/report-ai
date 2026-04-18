@@ -36,7 +36,7 @@
         <module>report-hub-system</module>
         <module>report-hub-knowledge</module>
         <module>report-hub-report</module>
-        <!-- api 将在后续 Task 中加入 -->
+        <module>report-hub-api</module>
     </modules>
 
     <repositories>
@@ -102,6 +102,16 @@
             <dependency>
                 <groupId>com.reportai</groupId>
                 <artifactId>report-hub-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.reportai</groupId>
+                <artifactId>report-hub-system</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.reportai</groupId>
+                <artifactId>report-hub-report</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

@@ -24,7 +24,8 @@
 | 2026-04-18 11:50 | Bolt | Claude Code + sed + mvn | Task 3: 移植 22 个 system 文件（user/role/department/log），遇到 LogController 引用 SkillMCP-only 类，改写为仅保留 operation 查询；pom.xml 临时 exclude 4 个 Ark/Doubao 文件待 Task 5 处理 | `867a7fb` |
 | 2026-04-18 11:56 | Leo | git | 发现 `.doubao`（含 api-key）被 `git add` 进 index，撤回 + 加 gitignore + push 固化 | `ee2a6e9` |
 | 2026-04-18 12:04 | Bolt | Claude Code + Tika 2.9 + MySQL FULLTEXT | Task 4 knowledge 模块（21 类，BUILD SUCCESS）：KB/Doc/Chunk 三层实体 + Tika 解析 + 段落+句子两级分块（500 char + 50 overlap）+ Jsoup URL 抓取 + FULLTEXT BOOLEAN MODE 检索（CJK 单字分词） | `9a01bf3` |
-| 2026-04-18 12:16 | Bolt | Claude Code + Anthropic Messages API + JDK HttpClient SSE | Task 5 report 模块（27 类, BUILD SUCCESS）：Report/Template/Version 3 表 + LlmClient 抽象 + ClaudeLlmClient (JDK HttpClient 裸 SSE 解析) + Prompts 中心化 (风格分析/生成/4 模式改写) + ReportGeneration/Rewrite/Version/Template 4 个 Service + 4 个 Controller（含 SseEmitter 的 GET /generate 和 POST /rewrite） | 待 commit |
+| 2026-04-18 12:16 | Bolt | Claude Code + Anthropic Messages API + JDK HttpClient SSE | Task 5 report 模块（27 类, BUILD SUCCESS）：Report/Template/Version 3 表 + LlmClient 抽象 + ClaudeLlmClient (JDK HttpClient 裸 SSE 解析) + Prompts 中心化 (风格分析/生成/4 模式改写) + ReportGeneration/Rewrite/Version/Template 4 个 Service + 4 个 Controller（含 SseEmitter 的 GET /generate 和 POST /rewrite） | `7e60c09` |
+| 2026-04-18 16:08 | Bolt | Claude Code + Maven 3.9 + JDK 17 | Task 6 api 模块：父 POM 注册 5 子模块 + report-hub-api/pom.xml（Spring Boot repackage + knife4j/actuator/redis/mysql）+ ReportAiApplication（@MapperScan 覆盖 6 个 mapper 包）+ AuthController（登录/userinfo/logout 从第一站移植改包名）+ DashboardController（reports/kb/users 三项 stats）+ application.yml（datasource/redis/mybatis-plus/jwt/report-ai.llm 全部 env var 注入）| 待 commit |
 
 ## 使用的 AI 工具汇总
 
