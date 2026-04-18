@@ -7,6 +7,7 @@ import com.reportai.hub.report.service.ReportGenerationService;
 import com.reportai.hub.report.service.RewriteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,8 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class ReportStreamController {
 
-    private static final long SSE_TIMEOUT_MS = 5 * 60 * 1000L;
+    /** 10 分钟：长报告（5000+ 字）也留足余量，避免 nginx/前端 timeout 截断。 */
+    private static final long SSE_TIMEOUT_MS = 10 * 60 * 1000L;
 
     private final ReportGenerationService generationService;
     private final RewriteService rewriteService;
@@ -38,7 +40,8 @@ public class ReportStreamController {
 
     @Operation(summary = "SSE 流式生成报告正文")
     @GetMapping(value = "/{id}/generate", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter generate(@PathVariable Long id) {
+    public SseEmitter generate(@PathVariable Long id, HttpServletResponse response) {
+        applySseHeaders(response);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         Long operatorId = UserContext.getUserId();
         sseExecutor.execute(() -> runStream(emitter, "generate",
@@ -47,10 +50,12 @@ public class ReportStreamController {
         return emitter;
     }
 
-    @Operation(summary = "SSE 流式改写报告（4 模式）")
+    @Operation(summary = "SSE 流式改写报告（4 模式：数据更新/视角调整/内容扩展/风格转换）")
     @PostMapping(value = "/{id}/rewrite", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter rewrite(@PathVariable Long id,
-                              @Valid @RequestBody RewriteRequest req) {
+                              @Valid @RequestBody RewriteRequest req,
+                              HttpServletResponse response) {
+        applySseHeaders(response);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         Long operatorId = UserContext.getUserId();
         RewriteMode mode = req.getMode();
@@ -59,6 +64,17 @@ public class ReportStreamController {
                 (onToken, onDone) ->
                         rewriteService.streamRewrite(id, mode, instruction, operatorId, onToken, onDone)));
         return emitter;
+    }
+
+    /**
+     * 指示 nginx/中间代理不要缓冲 SSE 流，并禁止 HTTP 缓存。
+     * X-Accel-Buffering: no 对 nginx / ingress-nginx 是"强制立刻刷到客户端"的信号，
+     * 是 SSE 能在代理后依然逐 token 到达的关键。
+     */
+    private void applySseHeaders(HttpServletResponse response) {
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("Connection", "keep-alive");
     }
 
     // -----------------------------------------------------------------

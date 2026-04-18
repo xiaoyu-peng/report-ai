@@ -142,10 +142,10 @@
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="POLISH">润色优化</el-dropdown-item>
-                    <el-dropdown-item command="EXPAND">扩写展开</el-dropdown-item>
-                    <el-dropdown-item command="CONDENSE">精简压缩</el-dropdown-item>
-                    <el-dropdown-item command="CUSTOM" divided>自定义指令...</el-dropdown-item>
+                    <el-dropdown-item command="DATA_UPDATE">数据更新（替换时间/数据）</el-dropdown-item>
+                    <el-dropdown-item command="ANGLE_SHIFT">视角调整（换观点/受众）</el-dropdown-item>
+                    <el-dropdown-item command="EXPAND">内容扩展（补案例/章节）</el-dropdown-item>
+                    <el-dropdown-item command="STYLE_SHIFT">风格转换（正式↔通俗）</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -402,22 +402,39 @@ async function handleRewrite(mode: RewriteMode) {
 
   let instruction: string | undefined
 
-  if (mode === 'CUSTOM') {
+  if (mode === 'DATA_UPDATE') {
     try {
       const { value } = await ElMessageBox.prompt(
-        '请输入自定义改写指令（例如：让语气更专业 / 增加数据支撑 / 调整为 Q&A 结构）',
-        '自定义改写',
+        '请输入数据更新指令（例如：把 2024 年数据换成 2025 年 / 更新市场规模到最新季度）',
+        '数据更新',
         {
           confirmButtonText: '开始改写',
           cancelButtonText: '取消',
           inputType: 'textarea',
-          inputPlaceholder: '请输入改写要求...',
-          inputValidator: (v) => (v && v.trim().length > 0) || '请输入改写指令'
+          inputPlaceholder: '请描述要替换/更新的数据...',
+          inputValidator: (v) => (v && v.trim().length > 0) || '请输入数据更新指令'
         }
       )
       instruction = value
     } catch {
-      return // user cancelled
+      return
+    }
+  } else if (mode === 'ANGLE_SHIFT') {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '请输入视角调整指令（例如：面向领导的简报风格 / 从企业视角切换到行业监管视角）',
+        '视角调整',
+        {
+          confirmButtonText: '开始改写',
+          cancelButtonText: '取消',
+          inputType: 'textarea',
+          inputPlaceholder: '请描述目标视角 / 受众...',
+          inputValidator: (v) => (v && v.trim().length > 0) || '请输入视角指令'
+        }
+      )
+      instruction = value
+    } catch {
+      return
     }
   }
 
