@@ -149,6 +149,25 @@ CREATE TABLE IF NOT EXISTS `report` (
   FULLTEXT KEY `ft_content` (`content`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 报告版本表（版本管理 + 修订痕迹评分 15%）
+CREATE TABLE IF NOT EXISTS `report_version` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `report_id` bigint NOT NULL,
+  `version_num` int NOT NULL,
+  `title` varchar(200) DEFAULT NULL,
+  `content` longtext DEFAULT NULL,
+  `change_summary` varchar(500) DEFAULT NULL,
+  -- initial / regenerate / rewrite_data_update / rewrite_angle_shift /
+  -- rewrite_expand / rewrite_style_shift / manual_edit
+  `source_mode` varchar(30) DEFAULT 'initial',
+  `word_count` int DEFAULT 0,
+  `created_by` bigint DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_report_ver` (`report_id`, `version_num`),
+  KEY `idx_report_id` (`report_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- 初始数据
