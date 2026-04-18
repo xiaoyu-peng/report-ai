@@ -2,12 +2,16 @@ package com.reportai.hub.knowledge.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -15,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @Component
 public class QingTianMcpClient {
 
-    @Value("${qingtian.mcp.appkey:OOn05z7m}")
+    @Value("${qingtian.mcp.appkey:}")
     private String appkey;
 
     @Value("${qingtian.mcp.search-url:https://api-sc.wengegroup.com/search-mcp}")
@@ -31,8 +35,18 @@ public class QingTianMcpClient {
     private int readTimeoutSeconds;
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final AtomicLong idCounter = new AtomicLong(1);
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final AtomicLong idCounter = new AtomicLong(System.nanoTime());
+    private RestTemplate restTemplate;
+
+    @PostConstruct
+    void init() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+        factory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
+        this.restTemplate = new RestTemplate(factory);
+        log.info("QingTianMcpClient initialized: connectTimeout={}s, readTimeout={}s",
+                connectTimeoutSeconds, readTimeoutSeconds);
+    }
 
     public JsonNode callSearch(String method, Map<String, Object> params) {
         return callMcp(searchUrl, method, params);
@@ -44,20 +58,19 @@ public class QingTianMcpClient {
 
     private JsonNode callMcp(String baseUrl, String method, Map<String, Object> params) {
         try {
-            Map<String, Object> request = Map.of(
-                    "jsonrpc", "2.0",
-                    "id", idCounter.getAndIncrement(),
-                    "method", "tools/call",
-                    "params", Map.of(
-                            "name", method,
-                            "arguments", params != null ? params : Map.of()
-                    )
-            );
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put("jsonrpc", "2.0");
+            request.put("id", idCounter.getAndIncrement());
+            request.put("method", "tools/call");
+            Map<String, Object> mcpParams = new LinkedHashMap<>();
+            mcpParams.put("name", method);
+            mcpParams.put("arguments", params != null ? params : Map.of());
+            request.put("params", mcpParams);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("appkey", appkey);
-            headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON, MediaType.TEXT_EVENT_STREAM));
+            headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
 
             HttpEntity<String> entity = new HttpEntity<>(mapper.writeValueAsString(request), headers);
             ResponseEntity<String> response = restTemplate.exchange(baseUrl, HttpMethod.POST, entity, String.class);

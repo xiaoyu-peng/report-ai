@@ -144,6 +144,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, EditPen, Download } from '@element-plus/icons-vue'
 import { getReport, getReportVersions, getVersionDiff, type Report, type ReportVersion } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
+import * as Diff from 'diff'
 
 const route = useRoute()
 const router = useRouter()
@@ -260,23 +261,25 @@ function parseDiffResult(data: any): { oldLines: DiffLine[]; newLines: DiffLine[
 }
 
 function computeSimpleDiff(oldContent: string, newContent: string): { oldLines: DiffLine[]; newLines: DiffLine[] } {
-  const oldArr = oldContent.split('\n')
-  const newArr = newContent.split('\n')
-  const oldLines: DiffLine[] = oldArr.map(t => ({ type: 'same' as const, text: t }))
-  const newLines: DiffLine[] = newArr.map(t => ({ type: 'same' as const, text: t }))
-
-  const oldSet = new Set(oldArr)
-  const newSet = new Set(newArr)
-
-  for (let i = 0; i < oldLines.length; i++) {
-    if (!newSet.has(oldArr[i])) oldLines[i].type = 'removed'
+    const changes = Diff.diffLines(oldContent, newContent)
+    const oldLines: DiffLine[] = []
+    const newLines: DiffLine[] = []
+    for (const change of changes) {
+      const text = change.value.endsWith('\n') ? change.value.slice(0, -1) : change.value
+      const lines = text.split('\n')
+      if (change.added) {
+        lines.forEach(t => newLines.push({ type: 'added', text: t }))
+      } else if (change.removed) {
+        lines.forEach(t => oldLines.push({ type: 'removed', text: t }))
+      } else {
+        lines.forEach(t => {
+          oldLines.push({ type: 'same', text: t })
+          newLines.push({ type: 'same', text: t })
+        })
+      }
+    }
+    return { oldLines, newLines }
   }
-  for (let i = 0; i < newLines.length; i++) {
-    if (!oldSet.has(newArr[i])) newLines[i].type = 'added'
-  }
-
-  return { oldLines, newLines }
-}
 
 const renderedContent = computed(() => {
   const c = report.value?.content || ''

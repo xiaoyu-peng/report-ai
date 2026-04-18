@@ -120,7 +120,18 @@ public class McpController {
     public ResponseEntity<JsonNode> callTool(
             @PathVariable String tool,
             @RequestBody Map<String, Object> params) {
+        if (!ALLOWED_TOOLS.contains(tool)) {
+            return ResponseEntity.badRequest().build();
+        }
         JsonNode result = sassService.callTool(tool, params);
         return ResponseEntity.ok(result);
     }
+
+    private static final java.util.Set<String> ALLOWED_TOOLS = java.util.Set.of(
+            "overview", "hot-article", "emotional-distribution", "datasourceSound",
+            "stage-envolution", "generate-event-topic-info", "hot-words",
+            "hot-org", "hot-person", "hot-theme", "influence-indexation",
+            "content-classification", "media-active", "media-influence",
+            "regional-distribution", "language-distribution", "sensitive-info"
+    );
 }
