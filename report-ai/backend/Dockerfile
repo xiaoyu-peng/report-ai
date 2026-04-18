@@ -1,11 +1,6 @@
-FROM eclipse-temurin:17-jdk-alpine AS builder
+FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY . .
-RUN ./mvnw clean package -DskipTests --no-transfer-progress 2>/dev/null || \
-    (apk add --no-cache maven && mvn clean package -DskipTests --no-transfer-progress)
-
-FROM eclipse-temurin:17-jre-alpine
-WORKDIR /app
-COPY --from=builder /app/report-hub-api/target/*.jar app.jar
+COPY report-hub-api/target/report-hub-api-1.0.0.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENV TZ=Asia/Shanghai JAVA_OPTS=""
+ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]

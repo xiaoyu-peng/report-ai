@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   `dept_id` bigint DEFAULT NULL,
   `role_id` bigint DEFAULT NULL,
   `status` varchar(20) DEFAULT 'active',
+  `mfa_enabled` tinyint(1) DEFAULT 0,
   `avatar` varchar(500) DEFAULT NULL,
   `phone` varchar(20) DEFAULT NULL,
   `last_login_at` datetime DEFAULT NULL,
@@ -27,9 +28,10 @@ CREATE TABLE IF NOT EXISTS `sys_role` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(50) NOT NULL,
   `code` varchar(50) NOT NULL,
-  `description` varchar(200) DEFAULT NULL,
+  `tenant_id` bigint DEFAULT NULL,
   `permissions` text DEFAULT NULL,
-  `status` varchar(20) DEFAULT 'active',
+  `is_system` tinyint(1) DEFAULT 0,
+  `description` varchar(200) DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted` tinyint DEFAULT 0,
@@ -40,9 +42,12 @@ CREATE TABLE IF NOT EXISTS `sys_role` (
 CREATE TABLE IF NOT EXISTS `sys_department` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
+  `tenant_id` bigint DEFAULT NULL,
   `parent_id` bigint DEFAULT NULL,
-  `sort_order` int DEFAULT 0,
-  `status` varchar(20) DEFAULT 'active',
+  `manager_id` bigint DEFAULT NULL,
+  `path` varchar(500) DEFAULT NULL,
+  `level` int DEFAULT 0,
+  `description` varchar(500) DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted` tinyint DEFAULT 0,
@@ -52,16 +57,28 @@ CREATE TABLE IF NOT EXISTS `sys_department` (
 -- 操作日志表
 CREATE TABLE IF NOT EXISTS `sys_operation_log` (
   `id` bigint NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint DEFAULT NULL,
   `user_id` bigint DEFAULT NULL,
   `username` varchar(50) DEFAULT NULL,
-  `operation` varchar(100) DEFAULT NULL,
-  `method` varchar(200) DEFAULT NULL,
-  `params` text DEFAULT NULL,
-  `ip` varchar(50) DEFAULT NULL,
-  `status` int DEFAULT NULL,
-  `error_msg` text DEFAULT NULL,
+  `dept_id` bigint DEFAULT NULL,
+  `action` varchar(100) DEFAULT NULL,
+  `action_name` varchar(200) DEFAULT NULL,
+  `resource_type` varchar(50) DEFAULT NULL,
+  `resource_id` varchar(100) DEFAULT NULL,
+  `resource_name` varchar(200) DEFAULT NULL,
+  `details` text DEFAULT NULL,
+  `before_data` text DEFAULT NULL,
+  `after_data` text DEFAULT NULL,
+  `ip_address` varchar(50) DEFAULT NULL,
+  `user_agent` varchar(500) DEFAULT NULL,
+  `session_id` varchar(100) DEFAULT NULL,
+  `status` varchar(20) DEFAULT NULL,
+  `error_message` text DEFAULT NULL,
+  `duration` bigint DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 知识库表
@@ -171,19 +188,19 @@ CREATE TABLE IF NOT EXISTS `report_version` (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- 初始数据
-INSERT INTO `sys_role` (`id`, `name`, `code`, `description`, `permissions`, `status`) VALUES
-(1, '超级管理员', 'SUPER_ADMIN', '系统超级管理员', '["*"]', 'active'),
-(2, '管理员', 'ADMIN', '系统管理员', '["*"]', 'active'),
-(3, '普通用户', 'USER', '普通用户', '["read"]', 'active');
+INSERT INTO `sys_role` (`id`, `name`, `code`, `tenant_id`, `permissions`, `is_system`, `description`) VALUES
+(1, '超级管理员', 'SUPER_ADMIN', 1, '["*"]', 1, '系统超级管理员'),
+(2, '管理员', 'ADMIN', 1, '["*"]', 1, '系统管理员'),
+(3, '普通用户', 'USER', 1, '["read"]', 0, '普通用户');
 
-INSERT INTO `sys_department` (`id`, `name`, `parent_id`, `sort_order`) VALUES
-(1, '总部', NULL, 1),
-(2, '技术部', 1, 2),
-(3, '产品部', 1, 3);
+INSERT INTO `sys_department` (`id`, `name`, `tenant_id`, `parent_id`, `path`, `level`, `description`) VALUES
+(1, '总部', 1, NULL, '/1', 0, '集团总部'),
+(2, '技术部', 1, 1, '/1/2', 1, '研发团队'),
+(3, '产品部', 1, 1, '/1/3', 1, '产品团队');
 
 -- 密码：admin123（BCrypt）
 INSERT INTO `sys_user` (`id`, `username`, `email`, `password_hash`, `tenant_id`, `dept_id`, `role_id`, `status`) VALUES
-(1, 'admin', 'admin@reportai.com', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 1, 1, 1, 'active');
+(1, 'admin', 'admin@reportai.com', '$2a$10$gOw16OIp1UglPMs6fLtGVuMU7cvS3lfb0.3teAi.ZDhXxHSS7BgOm', 1, 1, 1, 'active');
 
 INSERT INTO `report_template` (`id`, `name`, `description`, `is_builtin`) VALUES
 (1, '政策影响分析报告', '解读政策变化对行业/企业的影响，含事件概述、热点梳理、影响分析、建议', 1),
