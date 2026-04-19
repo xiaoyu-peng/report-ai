@@ -217,7 +217,8 @@ async function handleAnalyzeUpload(file: UploadRawFile) {
     form.append('file', file)
     const userStore = useUserStore()
     const token = userStore.token || localStorage.getItem('token')
-    const resp = await axios.post('/api/v1/templates/analyze', form, {
+    // /analyze 是 JSON 版；/analyze-file 是 multipart 版（后端会跑 Tika 抽文本 + LLM 风格分析）
+    const resp = await axios.post('/api/v1/templates/analyze-file', form, {
       headers: {
         'Content-Type': 'multipart/form-data',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
