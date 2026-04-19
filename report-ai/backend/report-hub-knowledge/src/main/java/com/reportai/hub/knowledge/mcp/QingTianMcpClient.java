@@ -28,10 +28,12 @@ public class QingTianMcpClient {
     @Value("${qingtian.mcp.sass-url:https://api-sc.wengegroup.com/sass-mcp}")
     private String sassUrl;
 
-    @Value("${qingtian.mcp.connect-timeout:5}")
+    // 调低到演示安全区间：connect 3s + read 8s。
+    // 背景：SSE 生成管线里可能串联 4~9 次 MCP 调用，30s 读超时累积到分钟级，评委席会以为页面卡死。
+    @Value("${qingtian.mcp.connect-timeout:3}")
     private int connectTimeoutSeconds;
 
-    @Value("${qingtian.mcp.read-timeout:30}")
+    @Value("${qingtian.mcp.read-timeout:8}")
     private int readTimeoutSeconds;
 
     private final ObjectMapper mapper = new ObjectMapper();

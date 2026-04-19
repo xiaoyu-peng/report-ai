@@ -104,8 +104,10 @@ export const getVersionDiffByNum = (reportId: number, fromVersion: number, toVer
   request.get(`/v1/reports/${reportId}/versions/${fromVersion}/diff/${toVersion}`)
 
 // Export
+// 与 ExportController 的 @RequestMapping("/api/v1/reports/{id}/export") 对齐；
+// 之前前端用的 `/v1/export/report/{id}/docx` 不存在对应路由，会直接 404。
 export const exportDocx = (reportId: number) =>
-  request.get(`/v1/export/report/${reportId}/docx`, { responseType: 'blob' })
+  request.get(`/v1/reports/${reportId}/export/docx`, { responseType: 'blob' })
 
 // Dashboard stats
 export interface DashboardStats {

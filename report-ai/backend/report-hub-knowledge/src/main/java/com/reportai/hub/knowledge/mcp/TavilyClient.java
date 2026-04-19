@@ -28,13 +28,20 @@ public class TavilyClient {
     private final ObjectMapper mapper = new ObjectMapper();
     private RestTemplate restTemplate;
 
+    @Value("${tavily.connect-timeout:3}")
+    private int connectTimeoutSeconds;
+
+    @Value("${tavily.read-timeout:8}")
+    private int readTimeoutSeconds;
+
     @PostConstruct
     void init() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(5));
-        factory.setReadTimeout(Duration.ofSeconds(30));
+        factory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+        factory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
         this.restTemplate = new RestTemplate(factory);
-        log.info("TavilyClient initialized: baseUrl={}", baseUrl);
+        log.info("TavilyClient initialized: baseUrl={}, connectTimeout={}s, readTimeout={}s",
+                baseUrl, connectTimeoutSeconds, readTimeoutSeconds);
     }
 
     public JsonNode search(String query, int maxResults) {

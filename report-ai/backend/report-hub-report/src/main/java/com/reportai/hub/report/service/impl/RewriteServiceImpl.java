@@ -94,7 +94,14 @@ public class RewriteServiceImpl implements RewriteService {
         return v;
     }
 
+    /** 总预算 15s；与生成阶段一致，超时/异常一律 null，不拖死 SSE。 */
     private String buildRewriteMcpContext(Report report, RewriteMode mode, String instruction) {
+        return ReportGenerationServiceImpl.withBudget(
+                () -> buildRewriteMcpContextInner(report, mode, instruction),
+                15, "rewrite-mcp");
+    }
+
+    private String buildRewriteMcpContextInner(Report report, RewriteMode mode, String instruction) {
         String topic = report.getTopic();
         if (topic == null || topic.isBlank()) return null;
 

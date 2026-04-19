@@ -27,7 +27,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -38,6 +42,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
     /** 单报告检索拉取多少 chunk；评分"检索准确性"要求溯源清晰，不要贪多。 */
     private static final int RAG_TOP_K = 8;
+
+    /** MCP 聚合阶段总预算。演示时评委最容不得"SSE 开始前干等"。 */
+    private static final int MCP_BUDGET_SECONDS = 20;
 
     private final ReportMapper reportMapper;
     private final ReportTemplateMapper templateMapper;
@@ -196,7 +203,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 .collect(Collectors.joining("\n\n"));
     }
 
+    /** 外层：总预算 {@value #MCP_BUDGET_SECONDS}s，超时/异常一律降级为 null，不得阻塞 SSE。 */
     private String buildMcpContext(Report report) {
+        return withBudget(() -> buildMcpContextInner(report), MCP_BUDGET_SECONDS, "generation-mcp");
+    }
+
+    private String buildMcpContextInner(Report report) {
         String topic = report.getTopic();
         if (topic == null || topic.isBlank()) return null;
 
@@ -230,6 +242,26 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
 
         return mcpData.length() > 0 ? mcpData.toString() : null;
+    }
+
+    /**
+     * 总预算熔断：给任意 Supplier 一个硬性时间上限。超时 / 异常都降级为 null。
+     * 用 CompletableFuture.supplyAsync 在 ForkJoin 公共池里跑，不抢 Spring MVC 线程。
+     */
+    static <T> T withBudget(Supplier<T> supplier, int budgetSeconds, String label) {
+        CompletableFuture<T> f = CompletableFuture.supplyAsync(supplier);
+        try {
+            return f.get(budgetSeconds, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            org.slf4j.LoggerFactory.getLogger(ReportGenerationServiceImpl.class)
+                    .warn("{} budget {}s exceeded, fallback to null", label, budgetSeconds);
+            f.cancel(true);
+            return null;
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(ReportGenerationServiceImpl.class)
+                    .warn("{} failed: {}", label, e.getMessage());
+            return null;
+        }
     }
 
     private String getTemplateName(Report report) {
