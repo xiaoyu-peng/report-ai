@@ -105,6 +105,21 @@ public class ReportStreamController {
         return emitter;
     }
 
+    @Operation(summary = "同步段落改写（Tiptap BubbleMenu 用，一次返回完整文本）")
+    @PostMapping(value = "/{id}/rewrite/section")
+    public com.reportai.hub.common.Result<String> rewriteSectionSync(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        Long operatorId = UserContext.getUserId();
+        String sectionContent = body.getOrDefault("content", "");
+        String mode = body.getOrDefault("mode", "rewrite");
+        String instruction = body.getOrDefault("instruction", "");
+        StringBuilder sb = new StringBuilder();
+        rewriteService.streamRewriteSection(id, sectionContent, mode, instruction, operatorId,
+                sb::append, () -> {});
+        return com.reportai.hub.common.Result.success(sb.toString().trim());
+    }
+
     /**
      * 指示 nginx/中间代理不要缓冲 SSE 流，并禁止 HTTP 缓存。
      * X-Accel-Buffering: no 对 nginx / ingress-nginx 是"强制立刻刷到客户端"的信号，

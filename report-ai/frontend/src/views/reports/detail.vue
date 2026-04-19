@@ -57,6 +57,15 @@
               </div>
             </div>
           </el-tab-pane>
+          <el-tab-pane label="智能编辑（Tiptap）" name="tiptap">
+            <div v-if="report" class="tiptap-tab">
+              <el-alert
+                title="选中任意段落 → 顶部浮起 ✨ 优化 / ➕ 扩展 / ✂️ 精简 三个按钮，AI 现场改写"
+                type="info" :closable="false" show-icon style="margin-bottom: 12px"
+              />
+              <TiptapEditor :model-value="report.content || ''" @update:model-value="onTiptapEdit" :report-id="report.id" />
+            </div>
+          </el-tab-pane>
           <el-tab-pane label="版本对比" name="diff">
             <div class="diff-controls">
               <span class="diff-label">对比版本：</span>
@@ -346,6 +355,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit, MagicStick, Warning } from '@element-plus/icons-vue'
 import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, checkReportQuality, type Report, type ReportVersion, type QualityReport } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
+import TiptapEditor from '@/components/editor/TiptapEditor.vue'
 import * as Diff from 'diff'
 import ReportCharts from '@/components/ReportCharts.vue'
 
@@ -474,6 +484,11 @@ function selectVersion(v: ReportVersion) {
     report.value = { ...report.value, content: v.content, wordCount: v.wordCount } as Report
   }
   nextTick(() => buildOutline())
+}
+
+/** Tiptap 编辑事件：仅本地缓存到 report.content，不立即落库（保存按钮另行处理） */
+function onTiptapEdit(val: string) {
+  if (report.value) report.value.content = val
 }
 
 async function handleRestore(v: ReportVersion) {
