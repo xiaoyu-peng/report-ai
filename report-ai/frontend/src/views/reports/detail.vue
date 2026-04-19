@@ -66,6 +66,9 @@
               <TiptapEditor :model-value="report.content || ''" @update:model-value="onTiptapEdit" :report-id="report.id" />
             </div>
           </el-tab-pane>
+          <el-tab-pane label="覆盖度体检（T5）" name="coverage">
+            <CoverageDashboard v-if="report" :report-id="report.id" />
+          </el-tab-pane>
           <el-tab-pane label="章节流式" name="sections">
             <div v-if="report" class="sections-tab">
               <el-card shadow="never" class="outline-panel">
@@ -385,6 +388,7 @@ import { renderReportMarkdown } from '@/utils/markdown'
 import TiptapEditor from '@/components/editor/TiptapEditor.vue'
 import OutlineEditor from '@/components/outline/OutlineEditor.vue'
 import SectionStreamView from '@/components/outline/SectionStreamView.vue'
+import CoverageDashboard from '@/components/quality/CoverageDashboard.vue'
 import { initSections, OutlineItem as ChapterOutlineItem } from '@/api/section'
 import * as Diff from 'diff'
 import ReportCharts from '@/components/ReportCharts.vue'
