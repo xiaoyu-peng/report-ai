@@ -63,6 +63,12 @@ public class RagSearchServiceImpl implements RagSearchService {
     }
 
     @Override
+    public List<RagChunkHit> searchRaw(Long kbId, String query, int topK,
+                                       String includeKeywords, String excludeKeywords) {
+        return searchRaw(kbId, buildCombinedQuery(query, includeKeywords, excludeKeywords), topK);
+    }
+
+    @Override
     public List<RagChunkHit> searchRaw(Long kbId, String query, int topK) {
         if (query == null || query.isBlank()) return List.of();
 

@@ -144,12 +144,11 @@ onMounted(fetchList)
 async function fetchList() {
   loading.value = true
   try {
-    const res = await getKnowledgeBases()
+    // 把分类筛选下沉到后端（WHERE category = ?），避免全量拉回来再前端过滤
+    const params = activeCategory.value ? { category: activeCategory.value } : undefined
+    const res = await getKnowledgeBases(params)
     const raw = (res as any).data
-    let all: KnowledgeBase[] = Array.isArray(raw) ? raw : Array.isArray(raw?.records) ? raw.records : []
-    if (activeCategory.value) {
-      all = all.filter(kb => (kb as any).category === activeCategory.value)
-    }
+    const all: KnowledgeBase[] = Array.isArray(raw) ? raw : Array.isArray(raw?.records) ? raw.records : []
     list.value = all
   } catch (e) {
     console.error('加载知识库列表失败:', e)

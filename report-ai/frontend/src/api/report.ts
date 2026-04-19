@@ -44,6 +44,10 @@ export interface CreateReportParams {
   keyPoints?: string
   kbId?: number | null
   templateId?: number | null
+  /** 赛题 2.3：手动补充的检索关键词，多个词用空格/逗号分隔 */
+  includeKeywords?: string
+  /** 赛题 2.3：需要排除的关键词 */
+  excludeKeywords?: string
 }
 
 export interface UpdateReportParams {

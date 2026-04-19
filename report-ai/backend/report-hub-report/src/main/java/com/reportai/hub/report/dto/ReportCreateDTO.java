@@ -16,4 +16,8 @@ public class ReportCreateDTO {
     private Long kbId;
     private Long templateId;
     private List<String> keyPoints;
+    /** 赛题 2.3：手动补充的检索关键词。支持逗号/空格分隔，空 = 不启用。 */
+    private String includeKeywords;
+    /** 赛题 2.3：需要排除的关键词。同上。 */
+    private String excludeKeywords;
 }

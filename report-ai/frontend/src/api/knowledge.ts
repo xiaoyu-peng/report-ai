@@ -22,8 +22,9 @@ export interface KnowledgeDocument {
   createdAt: string
 }
 
-export const getKnowledgeBases = () =>
-  request.get('/v1/knowledge/bases')
+// 支持按 category 筛选（policy / industry / history / media / other），以及关键词 + 分页
+export const getKnowledgeBases = (params?: { category?: string; keyword?: string; current?: number; size?: number }) =>
+  request.get('/v1/knowledge/bases', { params })
 
 export const createKnowledgeBase = (data: { name: string; description: string; category?: string }) =>
   request.post('/v1/knowledge/bases', data)

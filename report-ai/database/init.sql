@@ -163,6 +163,10 @@ CREATE TABLE IF NOT EXISTS `report` (
   `template_id` bigint DEFAULT NULL,
   `topic` varchar(500) DEFAULT NULL,
   `key_points` text DEFAULT NULL,
+  -- 赛题 2.3：用户可手动补充检索条件 / 排除不相关内容
+  -- 存储格式：多关键词用空格或中文逗号分隔；空串 / NULL 表示无约束
+  `include_keywords` varchar(500) DEFAULT NULL,
+  `exclude_keywords` varchar(500) DEFAULT NULL,
   `word_count` int DEFAULT 0,
   `created_by` bigint DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,

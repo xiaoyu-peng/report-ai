@@ -62,6 +62,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         r.setTopic(dto.getTopic());
         r.setKbId(dto.getKbId());
         r.setTemplateId(dto.getTemplateId());
+        r.setIncludeKeywords(dto.getIncludeKeywords());
+        r.setExcludeKeywords(dto.getExcludeKeywords());
         r.setStatus("draft");
         r.setWordCount(0);
         r.setCreatedBy(operatorId);
@@ -91,11 +93,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
             }
         }
 
-        // 2. RAG 检索：用 topic + keyPoints 拼查询
+        // 2. RAG 检索：用 topic + keyPoints 拼查询；include/exclude（赛题 2.3）由用户提交
         String query = buildQuery(report);
         List<RagChunkHit> hits = Collections.emptyList();
         if (report.getKbId() != null) {
-            hits = ragSearchService.searchRaw(report.getKbId(), query, RAG_TOP_K);
+            hits = ragSearchService.searchRaw(
+                    report.getKbId(), query, RAG_TOP_K,
+                    report.getIncludeKeywords(), report.getExcludeKeywords());
         }
         // 2.1 先把命中的 chunk 清单推给前端（SSE chunks 事件），供"引用溯源"展示。
         //     失败不阻塞主流程 —— 溯源只是增强，生成本身更重要。

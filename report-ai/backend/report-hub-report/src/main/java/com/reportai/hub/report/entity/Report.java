@@ -18,6 +18,10 @@ public class Report extends BaseEntity {
     private String topic;
     /** JSON array of key-points string list. */
     private String keyPoints;
+    /** 赛题 2.3：用户补充的检索关键词（空白分隔）。生成时会拼进 RAG BOOLEAN query 作为 +term。 */
+    private String includeKeywords;
+    /** 赛题 2.3：用户要排除的关键词（逗号/空白分隔）。生成时拼进 BOOLEAN query 作为 -term。 */
+    private String excludeKeywords;
     private Integer wordCount;
     private Long createdBy;
 }

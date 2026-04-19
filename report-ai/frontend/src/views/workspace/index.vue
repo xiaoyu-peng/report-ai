@@ -1060,7 +1060,10 @@ async function handleGenerate() {
       topic: form.value.topic.trim(),
       keyPoints: form.value.keyPoints,
       kbId: form.value.kbId,
-      templateId: form.value.templateId
+      templateId: form.value.templateId,
+      // 赛题 2.3：把用户手填的补充/排除关键词一起下沉到后端 BOOLEAN query
+      includeKeywords: includeKeywords.value.length ? includeKeywords.value.join(' ') : undefined,
+      excludeKeywords: excludeKeywords.value.length ? excludeKeywords.value.join(' ') : undefined
     })
     const draft = (createRes as any).data as { id: number } | null
     if (!draft?.id) {
