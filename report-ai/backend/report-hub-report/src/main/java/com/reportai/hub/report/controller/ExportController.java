@@ -1,9 +1,14 @@
 package com.reportai.hub.report.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.reportai.hub.common.exception.BusinessException;
 import com.reportai.hub.report.entity.Report;
+import com.reportai.hub.report.entity.ReportCitation;
+import com.reportai.hub.report.mapper.ReportCitationMapper;
 import com.reportai.hub.report.mapper.ReportMapper;
 import com.reportai.hub.report.service.DocxExportService;
+
+import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,10 +36,11 @@ import java.nio.charset.StandardCharsets;
 public class ExportController {
 
     private final ReportMapper reportMapper;
+    private final ReportCitationMapper citationMapper;
     private final DocxExportService docxExportService;
 
     @GetMapping("/docx")
-    @Operation(summary = "导出 .docx —— 浏览器直接下载")
+    @Operation(summary = "导出 .docx —— 浏览器直接下载（含引用列表附录）")
     public void exportDocx(@PathVariable("id") Long id,
                            HttpServletResponse response) throws IOException {
         Report report = reportMapper.selectById(id);
@@ -43,13 +49,15 @@ public class ExportController {
         String filename = safeFilename(report.getTitle(), "report") + ".docx";
         response.setContentType(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        // RFC 5987：中文标题用 filename*=UTF-8''... 通过 URL 编码保留
         String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
         response.setHeader("Content-Disposition",
                 "attachment; filename=\"" + encoded + "\"; filename*=UTF-8''" + encoded);
         response.setHeader("Cache-Control", "no-store");
 
-        docxExportService.writeDocx(report, response.getOutputStream());
+        // T5：拉 accepted=true 的引用，文末追加「引用列表」附录
+        List<ReportCitation> citations = citationMapper.selectList(new QueryWrapper<ReportCitation>()
+                .eq("report_id", id).eq("accepted", true).orderByAsc("citation_marker"));
+        docxExportService.writeDocx(report, citations, response.getOutputStream());
         response.getOutputStream().flush();
     }
 

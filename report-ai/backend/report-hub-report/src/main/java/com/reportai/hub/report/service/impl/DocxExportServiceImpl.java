@@ -2,6 +2,7 @@ package com.reportai.hub.report.service.impl;
 
 import com.reportai.hub.common.exception.BusinessException;
 import com.reportai.hub.report.entity.Report;
+import com.reportai.hub.report.entity.ReportCitation;
 import com.reportai.hub.report.service.DocxExportService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
@@ -12,6 +13,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,6 +41,11 @@ public class DocxExportServiceImpl implements DocxExportService {
 
     @Override
     public void writeDocx(Report report, OutputStream out) {
+        writeDocx(report, Collections.emptyList(), out);
+    }
+
+    @Override
+    public void writeDocx(Report report, List<ReportCitation> citations, OutputStream out) {
         if (report == null) throw new BusinessException("报告不存在");
         String body = report.getContent() == null ? "" : report.getContent();
 
@@ -46,9 +54,59 @@ public class DocxExportServiceImpl implements DocxExportService {
             for (String block : splitBlocks(body)) {
                 writeBlock(doc, block);
             }
+            if (citations != null && !citations.isEmpty()) {
+                writeCitationsAppendix(doc, citations);
+            }
             doc.write(out);
         } catch (IOException e) {
             throw new BusinessException("DOCX 生成失败: " + e.getMessage());
+        }
+    }
+
+    /** 文末「引用列表」附录：每条 [n] = docTitle (第 X-Y 页) + snippet。 */
+    private void writeCitationsAppendix(XWPFDocument doc, List<ReportCitation> citations) {
+        // 标题
+        XWPFParagraph titleP = doc.createParagraph();
+        titleP.setSpacingBefore(360);
+        titleP.setSpacingAfter(120);
+        XWPFRun titleR = titleP.createRun();
+        titleR.setBold(true);
+        titleR.setFontSize(15);
+        titleR.setText("引用列表");
+
+        for (ReportCitation c : citations) {
+            XWPFParagraph p = doc.createParagraph();
+            p.setSpacingAfter(80);
+            p.setSpacingBetween(1.4, org.apache.poi.xwpf.usermodel.LineSpacingRule.AUTO);
+
+            // [n] 编号（蓝色加粗）
+            XWPFRun numRun = p.createRun();
+            numRun.setBold(true);
+            numRun.setColor("409EFF");
+            numRun.setText("[" + c.getCitationMarker() + "] ");
+
+            // 文档标题
+            XWPFRun titleRun = p.createRun();
+            titleRun.setBold(true);
+            titleRun.setText(c.getDocTitle() == null ? "未知来源" : c.getDocTitle());
+
+            // 页码
+            if (c.getPageStart() != null) {
+                XWPFRun pageRun = p.createRun();
+                pageRun.setColor("909399");
+                pageRun.setText("（第 " + c.getPageStart() +
+                        (c.getPageEnd() != null && !c.getPageEnd().equals(c.getPageStart())
+                                ? "-" + c.getPageEnd() : "") + " 页）");
+            }
+
+            // 原文片段
+            if (c.getSnippet() != null && !c.getSnippet().isBlank()) {
+                XWPFRun snipRun = p.createRun();
+                snipRun.addBreak();
+                snipRun.setColor("606266");
+                snipRun.setItalic(true);
+                snipRun.setText(c.getSnippet());
+            }
         }
     }
 
