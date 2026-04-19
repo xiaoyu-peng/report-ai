@@ -47,9 +47,11 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElTreeSelect: typeof import('element-plus/es')['ElTreeSelect']
     ElUpload: typeof import('element-plus/es')['ElUpload']
+    OutlineEditor: typeof import('./components/outline/OutlineEditor.vue')['default']
     ReportCharts: typeof import('./components/ReportCharts.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SectionStreamView: typeof import('./components/outline/SectionStreamView.vue')['default']
     TiptapEditor: typeof import('./components/editor/TiptapEditor.vue')['default']
   }
   export interface ComponentCustomProperties {

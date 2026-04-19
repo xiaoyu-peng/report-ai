@@ -66,6 +66,33 @@
               <TiptapEditor :model-value="report.content || ''" @update:model-value="onTiptapEdit" :report-id="report.id" />
             </div>
           </el-tab-pane>
+          <el-tab-pane label="章节流式" name="sections">
+            <div v-if="report" class="sections-tab">
+              <el-card shadow="never" class="outline-panel">
+                <template #header>
+                  <div class="panel-head">
+                    <span><el-icon><Edit /></el-icon> 第 1 步：编辑大纲</span>
+                    <el-button size="small" type="primary" :loading="initSecLoading"
+                               :disabled="!outlineDraft.length" @click="submitOutline">
+                      提交大纲，初始化 {{ outlineDraft.length }} 个章节
+                    </el-button>
+                  </div>
+                </template>
+                <OutlineEditor v-model="outlineDraft" />
+              </el-card>
+              <el-card shadow="never" class="stream-panel">
+                <template #header>
+                  <span><el-icon><VideoPlay /></el-icon> 第 2 步：每章独立流式生成 + 进度</span>
+                </template>
+                <SectionStreamView
+                  ref="sectionStreamRef"
+                  :report-id="report.id"
+                  :kb-ids="report.kbId ? [report.kbId] : []"
+                  @assembled="onSectionsAssembled"
+                />
+              </el-card>
+            </div>
+          </el-tab-pane>
           <el-tab-pane label="版本对比" name="diff">
             <div class="diff-controls">
               <span class="diff-label">对比版本：</span>
@@ -352,10 +379,13 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit, MagicStick, Warning } from '@element-plus/icons-vue'
+import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit, MagicStick, Warning, VideoPlay } from '@element-plus/icons-vue'
 import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, checkReportQuality, type Report, type ReportVersion, type QualityReport } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
 import TiptapEditor from '@/components/editor/TiptapEditor.vue'
+import OutlineEditor from '@/components/outline/OutlineEditor.vue'
+import SectionStreamView from '@/components/outline/SectionStreamView.vue'
+import { initSections, OutlineItem as ChapterOutlineItem } from '@/api/section'
 import * as Diff from 'diff'
 import ReportCharts from '@/components/ReportCharts.vue'
 
@@ -489,6 +519,33 @@ function selectVersion(v: ReportVersion) {
 /** Tiptap 编辑事件：仅本地缓存到 report.content，不立即落库（保存按钮另行处理） */
 function onTiptapEdit(val: string) {
   if (report.value) report.value.content = val
+}
+
+// ====================== 章节流式 tab 状态 ======================
+const outlineDraft = ref<ChapterOutlineItem[]>([])
+const initSecLoading = ref(false)
+const sectionStreamRef = ref<InstanceType<typeof SectionStreamView> | null>(null)
+
+async function submitOutline() {
+  if (!report.value) return
+  const valid = outlineDraft.value.filter(o => o.title?.trim())
+  if (valid.length === 0) { ElMessage.warning('请至少填一个有效章节'); return }
+  initSecLoading.value = true
+  try {
+    await initSections(report.value.id, valid)
+    ElMessage.success(`已初始化 ${valid.length} 个章节，可在右侧开始流式生成`)
+    sectionStreamRef.value?.reload()
+  } finally {
+    initSecLoading.value = false
+  }
+}
+
+function onSectionsAssembled(content: string) {
+  if (report.value && content) {
+    report.value.content = content
+    nextTick(() => buildOutline())
+    ElMessage.success('已合成全文写入报告正文，可切到「报告正文」tab 查看')
+  }
 }
 
 async function handleRestore(v: ReportVersion) {
