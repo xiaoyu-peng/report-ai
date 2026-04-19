@@ -95,6 +95,24 @@
             </div>
 
             <div v-if="diffResult">
+              <!-- 后端 LCS 算出的精确统计；fallback 时可能为空，这时兜底用客户端 changeStats -->
+              <div class="diff-stats-bar">
+                <el-tag v-if="diffStats" type="success" effect="plain">
+                  <el-icon><Plus /></el-icon>
+                  新增 {{ diffStats.inserts }} 行
+                </el-tag>
+                <el-tag v-if="diffStats" type="danger" effect="plain">
+                  <el-icon><Minus /></el-icon>
+                  删除 {{ diffStats.deletes }} 行
+                </el-tag>
+                <el-tag v-if="diffStats" type="warning" effect="plain">
+                  <el-icon><Edit /></el-icon>
+                  修改 {{ diffStats.replaces }} 行
+                </el-tag>
+                <el-tag v-if="!diffStats" type="info" effect="plain">
+                  客户端回退计算：+{{ changeStats.added }} / -{{ changeStats.removed }}
+                </el-tag>
+              </div>
               <div v-if="diffViewMode === 'revision'" class="revision-view">
                 <div class="revision-toolbar">
                   <el-button type="success" size="small" @click="acceptAllChanges">
@@ -199,7 +217,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit } from '@element-plus/icons-vue'
 import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, type Report, type ReportVersion } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
 import * as Diff from 'diff'
@@ -223,10 +241,19 @@ const diffViewMode = ref<'split' | 'revision'>('split')
 
 const contentEl = ref<HTMLDivElement | null>(null)
 
+// 'placeholder' 用于左右两栏对齐（当一侧是 INSERT/DELETE 时，另一侧占位空行）
 interface DiffLine {
-  type: 'same' | 'added' | 'removed' | 'modified'
+  type: 'same' | 'added' | 'removed' | 'modified' | 'placeholder'
   text: string
 }
+
+interface DiffStats {
+  inserts: number
+  deletes: number
+  replaces: number
+}
+
+const diffStats = ref<DiffStats | null>(null)
 
 interface OutlineItem {
   id: string
@@ -304,10 +331,16 @@ async function loadDiff() {
   if (!diffFrom.value || !diffTo.value) return
   diffLoading.value = true
   diffResult.value = null
+  diffStats.value = null
   try {
     const res = await getVersionDiffByNum(reportId, diffFrom.value, diffTo.value)
     const data = (res as any).data
     diffResult.value = parseDiffResult(data)
+    diffStats.value = {
+      inserts: data?.inserts ?? 0,
+      deletes: data?.deletes ?? 0,
+      replaces: data?.replaces ?? 0
+    }
   } catch (e) {
     console.error('加载 diff 失败:', e)
     const fromV = versions.value.find(v => v.versionNum === diffFrom.value)
@@ -320,34 +353,45 @@ async function loadDiff() {
   }
 }
 
+/**
+ * 对接后端 DiffResult schema：{ lines: [{op: EQUAL/INSERT/DELETE/REPLACE, oldLine, newLine}], inserts, deletes, replaces }
+ * 把每一条 DiffLine 映射到左右两栏，INSERT/DELETE 在对侧塞 placeholder 以保持视觉行对齐。
+ */
 function parseDiffResult(data: any): { oldLines: DiffLine[]; newLines: DiffLine[] } {
   if (!data) return { oldLines: [], newLines: [] }
-  const patches: any[] = data.patches || data.diffs || data.changes || []
-  if (patches.length === 0) {
+  const lines: Array<{op?: string, oldLine?: string, newLine?: string}> = data.lines || []
+  // 后端 schema 缺失时兜底走本地 LCS（演示前不容崩）
+  if (!Array.isArray(lines) || lines.length === 0) {
     const oldContent = data.oldContent || data.fromContent || ''
     const newContent = data.newContent || data.toContent || ''
-    return computeSimpleDiff(oldContent, newContent)
+    if (oldContent || newContent) return computeSimpleDiff(oldContent, newContent)
+    return { oldLines: [], newLines: [] }
   }
   const oldLines: DiffLine[] = []
   const newLines: DiffLine[] = []
-  for (const p of patches) {
-    const type = p.type || p.changeType || 'EQUAL'
-    const text = p.text || p.content || ''
-    const lines = text.split('\n')
-    for (const line of lines) {
-      const dl: DiffLine = {
-        type: type === 'EQUAL' || type === 'SAME' ? 'same'
-          : type === 'DELETE' || type === 'REMOVED' ? 'removed'
-          : type === 'INSERT' || type === 'ADDED' ? 'added'
-          : 'modified',
-        text: line
-      }
-      if (dl.type === 'removed' || dl.type === 'same') oldLines.push(dl)
-      if (dl.type === 'added' || dl.type === 'same') newLines.push(dl)
-      if (dl.type === 'modified') {
-        oldLines.push({ type: 'removed', text: line })
-        newLines.push({ type: 'added', text: p.newText || p.replacement || line })
-      }
+  for (const l of lines) {
+    const op = String(l.op || '').toUpperCase()
+    switch (op) {
+      case 'EQUAL':
+        oldLines.push({ type: 'same', text: l.oldLine ?? l.newLine ?? '' })
+        newLines.push({ type: 'same', text: l.newLine ?? l.oldLine ?? '' })
+        break
+      case 'DELETE':
+        oldLines.push({ type: 'removed', text: l.oldLine ?? '' })
+        newLines.push({ type: 'placeholder', text: '' })
+        break
+      case 'INSERT':
+        oldLines.push({ type: 'placeholder', text: '' })
+        newLines.push({ type: 'added', text: l.newLine ?? '' })
+        break
+      case 'REPLACE':
+        oldLines.push({ type: 'removed', text: l.oldLine ?? '' })
+        newLines.push({ type: 'added', text: l.newLine ?? '' })
+        break
+      default:
+        // 未知 op 当 EQUAL 处理，避免静默丢行
+        oldLines.push({ type: 'same', text: l.oldLine ?? '' })
+        newLines.push({ type: 'same', text: l.newLine ?? '' })
     }
   }
   return { oldLines, newLines }
@@ -549,6 +593,7 @@ function lineClass(type: string): string {
 function linePrefix(type: string): string {
   if (type === 'added') return '+ '
   if (type === 'removed') return '- '
+  if (type === 'placeholder') return '  '
   return '  '
 }
 
@@ -790,6 +835,30 @@ function formatTime(v?: string): string {
 .line-removed .line-prefix { color: #dc2626; }
 .line-modified { background: #fffbeb; color: #d97706; }
 .line-modified .line-prefix { color: #d97706; }
+/* placeholder：对侧 INSERT/DELETE 时，此侧留一个灰色空行占位，保持两栏视觉对齐 */
+.line-placeholder {
+  background: #f8fafc;
+  color: #cbd5e1;
+  min-height: 24px;
+}
+.line-placeholder .line-prefix { color: #cbd5e1; }
+
+/* 后端 LCS 统计条 */
+.diff-stats-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #fafbfc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  align-items: center;
+}
+.diff-stats-bar .el-tag {
+  font-weight: 500;
+}
 
 /* Revision trace view */
 .revision-toolbar {
