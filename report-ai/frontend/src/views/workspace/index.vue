@@ -376,7 +376,7 @@
           class="report-preview section-editable"
           @click="handlePreviewClick"
           @mouseover="handleSectionHover"
-          @mouseout="activeSectionId = -1"
+          @mouseout="handlePreviewMouseout"
           v-html="renderedSectionHtml"
         />
       </el-card>
@@ -707,6 +707,35 @@
         </el-tabs>
       </el-card>
     </div>
+
+    <!-- 角标 hover 预览浮层（teleport 到 body 避免被 el-card overflow 切掉） -->
+    <Teleport to="body">
+      <transition name="cite-pop">
+        <div
+          v-if="citePopover"
+          class="cite-popover"
+          :style="{ left: citePopover.x + 'px', top: citePopover.y + 'px' }"
+          @mouseenter="cancelHideCitePopover"
+          @mouseleave="scheduleHideCitePopover"
+        >
+          <div class="cite-pop-head">
+            <span class="cite-pop-idx">[{{ citePopover.chunk.index }}]</span>
+            <span class="cite-pop-icon">{{ fileIcon(citePopover.chunk.fileType) }}</span>
+            <span class="cite-pop-file" :title="citePopover.chunk.filename">
+              {{ citePopover.chunk.filename }}
+            </span>
+            <el-tag v-if="pageLabel(citePopover.chunk)" size="small" type="warning" effect="plain">
+              {{ pageLabel(citePopover.chunk) }}
+            </el-tag>
+          </div>
+          <div class="cite-pop-body">{{ citePopover.chunk.content }}</div>
+          <div class="cite-pop-foot">
+            <span class="cite-pop-score">相关度 {{ (citePopover.chunk.score * 100).toFixed(0) }}%</span>
+            <span class="cite-pop-hint">点击角标可跳转侧栏卡片</span>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
@@ -814,6 +843,11 @@ const templates = ref<Template[]>([])
 // 引用溯源状态 —— 后端通过 SSE chunks 事件推送 RAG top-k 命中列表。
 const chunks = ref<ChunkHit[]>([])
 const highlightedCite = ref<number | null>(null)
+
+// 角标 hover 预览浮层（Granola 式），用 teleport 到 body 以脱离 overflow 截断
+const citePopover = ref<{ chunk: ChunkHit, x: number, y: number } | null>(null)
+let citeShowTimer: number | null = null
+let citeHideTimer: number | null = null
 
 // 右侧面板的 tab：citations | quality
 const rightTab = ref<'citations' | 'quality'>('citations')
@@ -1289,6 +1323,43 @@ function scrollToCitation(n: number) {
   })
 }
 
+// -------- 角标 hover 预览浮层（Granola 式） --------
+
+function scheduleCitePopover(sup: HTMLElement) {
+  if (citeHideTimer) { clearTimeout(citeHideTimer); citeHideTimer = null }
+  const idxStr = sup.dataset.idx
+  if (!idxStr) return
+  const idx = Number(idxStr)
+  const chunk = chunks.value.find(c => c.index === idx)
+  if (!chunk) return
+  // 已经显示同一个就不重排位置，避免抖动
+  if (citePopover.value && citePopover.value.chunk.index === idx) return
+  if (citeShowTimer) clearTimeout(citeShowTimer)
+  citeShowTimer = window.setTimeout(() => {
+    const rect = sup.getBoundingClientRect()
+    // 锚点放在 sup 下方 8px；水平靠近左缘但不超出窗口右边界
+    const popoverMaxWidth = 360
+    const x = Math.min(
+      rect.left + window.scrollX,
+      window.innerWidth + window.scrollX - popoverMaxWidth - 12
+    )
+    const y = rect.bottom + window.scrollY + 8
+    citePopover.value = { chunk, x, y }
+  }, 200)
+}
+
+function scheduleHideCitePopover() {
+  if (citeShowTimer) { clearTimeout(citeShowTimer); citeShowTimer = null }
+  if (citeHideTimer) clearTimeout(citeHideTimer)
+  citeHideTimer = window.setTimeout(() => {
+    citePopover.value = null
+  }, 150)
+}
+
+function cancelHideCitePopover() {
+  if (citeHideTimer) { clearTimeout(citeHideTimer); citeHideTimer = null }
+}
+
 // -------- 质量检查（赛题 3.4） --------
 
 async function runQualityCheck() {
@@ -1453,6 +1524,20 @@ function handleSectionHover(e: MouseEvent) {
   if (block) {
     activeSectionId.value = Number(block.dataset.sectionId ?? -1)
   }
+  // 引用角标的 hover 预览（Granola 式）：mouseover 事件冒泡路径里如果有 sup.cite，
+  // 延迟 200ms 后打开浮层 —— 避免光标掠过就闪。
+  const sup = target.closest('sup.cite') as HTMLElement | null
+  if (sup) scheduleCitePopover(sup)
+}
+
+function handlePreviewMouseout(e: MouseEvent) {
+  activeSectionId.value = -1
+  // 只在光标真正离开 sup 区域时调度隐藏（relatedTarget 依然在 sup 内就不动）
+  const sup = (e.target as HTMLElement | null)?.closest('sup.cite')
+  if (!sup) return
+  const to = e.relatedTarget as HTMLElement | null
+  if (to && (to.closest('sup.cite') === sup || to.closest('.cite-popover'))) return
+  scheduleHideCitePopover()
 }
 
 function handlePreviewClick(e: MouseEvent) {
@@ -2433,5 +2518,84 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+}
+
+/* ---- 引用 hover 预览浮层（Granola 式） ---- */
+.cite-popover {
+  position: absolute;
+  z-index: 9999;
+  width: 360px;
+  max-height: 280px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.2), 0 2px 6px rgba(15, 23, 42, 0.08);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #1e293b;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cite-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #475569;
+}
+.cite-pop-idx {
+  color: #6366f1;
+  font-weight: 700;
+  font-size: 13px;
+}
+.cite-pop-icon {
+  font-size: 14px;
+}
+.cite-pop-file {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: #334155;
+}
+.cite-pop-body {
+  flex: 1;
+  overflow: auto;
+  font-size: 12.5px;
+  color: #334155;
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 180px;
+  line-height: 1.7;
+}
+.cite-pop-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.cite-pop-score {
+  color: #6366f1;
+  font-weight: 600;
+}
+.cite-pop-hint {
+  font-style: italic;
+}
+
+/* 进场 / 退场小动画 */
+.cite-pop-enter-active,
+.cite-pop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.cite-pop-enter-from,
+.cite-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>
