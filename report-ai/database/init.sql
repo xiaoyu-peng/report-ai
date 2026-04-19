@@ -285,3 +285,70 @@ INSERT INTO `report_version` (`id`, `report_id`, `version_num`, `title`, `conten
 (15, 8, 1, '新能源汽车舆情传播分析报告', '# 新能源汽车舆情传播分析报告\n\n## 一、事件回顾\n\n某新能源车企发布智能驾驶系统，引发热议。\n\n## 二、声量与渠道分析\n\n多平台广泛传播，声量峰值达日均20倍。\n\n## 三、情感分布\n\n正面55%，中性30%，负面15%。\n\n## 四、传播效果评估\n\n品牌知名度提升20%，预约试驾增长300%。', 'initial', 180, '首次 AI 生成', 1),
 (16, 9, 1, '科技情报：大模型端侧部署专题报告', '# 大模型端侧部署专题报告\n\n## 一、技术进展\n\n端侧AI全面普及，模型压缩和芯片算力双突破。\n\n## 二、专利分析\n\n端侧AI专利申请量增长120%。\n\n## 三、竞品动态\n\nApple Intelligence和高通AI Hub推动生态发展。\n\n## 四、趋势预测\n\n端侧大模型将成为智能手机标配。', 'initial', 160, '首次 AI 生成', 1),
 (17, 10, 1, '专题日报：数字经济政策速递', '# 数字经济政策速递\n\n## 今日要闻\n\n数据要素改革方案发布，工业互联网创新发展推进。\n\n## 重点数据\n\n数字经济占GDP比重突破42%。\n\n## 趋势提示\n\n数据资产入表加速，数字孪生城市规模化。', 'initial', 120, '首次 AI 生成', 1);
+
+-- ============================================================
+-- T5 模块新增（V20260419）：引用溯源 / 章节流式 / 排除引用 / 质量体检
+-- ============================================================
+
+ALTER TABLE `knowledge_chunk`
+  ADD COLUMN IF NOT EXISTS `paragraph_index` INT DEFAULT NULL COMMENT 'PDF/Word 源段落序号 (0-based)';
+
+ALTER TABLE `report_template`
+  ADD COLUMN IF NOT EXISTS `outline_json` JSON DEFAULT NULL COMMENT '可复用大纲';
+
+ALTER TABLE `report_version`
+  ADD COLUMN IF NOT EXISTS `before_content` LONGTEXT DEFAULT NULL COMMENT '改写前原文';
+
+CREATE TABLE IF NOT EXISTS `report_citation` (
+  `id`              BIGINT       NOT NULL AUTO_INCREMENT,
+  `report_id`       BIGINT       NOT NULL,
+  `version_id`      BIGINT       DEFAULT NULL,
+  `section_index`   INT          NOT NULL DEFAULT 0,
+  `paragraph_index` INT          NOT NULL DEFAULT 0,
+  `citation_marker` INT          NOT NULL,
+  `chunk_id`        BIGINT       NOT NULL,
+  `doc_id`          BIGINT       NOT NULL,
+  `doc_title`       VARCHAR(255) DEFAULT NULL,
+  `page_start`      INT          DEFAULT NULL,
+  `page_end`        INT          DEFAULT NULL,
+  `snippet`         TEXT         DEFAULT NULL,
+  `accepted`        TINYINT(1)   NOT NULL DEFAULT 1,
+  `created_at`      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_citation_report` (`report_id`, `version_id`),
+  KEY `idx_citation_marker` (`report_id`, `citation_marker`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='报告引用溯源';
+
+CREATE TABLE IF NOT EXISTS `report_section` (
+  `id`             BIGINT      NOT NULL AUTO_INCREMENT,
+  `report_id`      BIGINT      NOT NULL,
+  `section_index`  INT         NOT NULL,
+  `title`          VARCHAR(255) DEFAULT NULL,
+  `prompt`         TEXT        DEFAULT NULL,
+  `status`         VARCHAR(20) NOT NULL DEFAULT 'pending',
+  `content`        LONGTEXT    DEFAULT NULL,
+  `word_count`     INT         NOT NULL DEFAULT 0,
+  `citation_count` INT         NOT NULL DEFAULT 0,
+  `started_at`     DATETIME    DEFAULT NULL,
+  `finished_at`    DATETIME    DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_report_section_idx` (`report_id`, `section_index`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='章节级生成状态';
+
+CREATE TABLE IF NOT EXISTS `report_excluded_chunk` (
+  `report_id` BIGINT NOT NULL,
+  `chunk_id`  BIGINT NOT NULL,
+  PRIMARY KEY (`report_id`, `chunk_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户排除的引用块';
+
+CREATE TABLE IF NOT EXISTS `report_quality` (
+  `report_id`        BIGINT       NOT NULL,
+  `coverage_rate`    DECIMAL(5,2) DEFAULT NULL,
+  `citations_total`  INT          DEFAULT 0,
+  `paragraphs_total` INT          DEFAULT 0,
+  `paragraphs_cited` INT          DEFAULT 0,
+  `kb_distribution`  JSON         DEFAULT NULL,
+  `suspicious_facts` JSON         DEFAULT NULL,
+  `checked_at`       DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`report_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='报告质量体检';
