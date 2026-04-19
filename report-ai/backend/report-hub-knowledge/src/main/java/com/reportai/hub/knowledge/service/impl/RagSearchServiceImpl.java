@@ -1,16 +1,24 @@
 package com.reportai.hub.knowledge.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.reportai.hub.knowledge.dto.RagChunkHit;
+import com.reportai.hub.knowledge.dto.RagSearchQuery;
 import com.reportai.hub.knowledge.dto.RagSearchResponse;
+import com.reportai.hub.knowledge.entity.ReportExcludedChunk;
 import com.reportai.hub.knowledge.mapper.KnowledgeChunkMapper;
+import com.reportai.hub.knowledge.mapper.ReportExcludedChunkMapper;
 import com.reportai.hub.knowledge.service.RagSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -21,6 +29,7 @@ import java.util.stream.Collectors;
 public class RagSearchServiceImpl implements RagSearchService {
 
     private final KnowledgeChunkMapper chunkMapper;
+    private final ReportExcludedChunkMapper excludedMapper;
     private final StringRedisTemplate redisTemplate;
 
     private static final long RAG_CACHE_TTL_SECONDS = 300;
@@ -136,5 +145,82 @@ public class RagSearchServiceImpl implements RagSearchService {
                 || b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
                 || b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
                 || b == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
+    }
+
+    // ==================== T5 增强检索 ====================
+
+    @Override
+    public RagSearchResponse search(RagSearchQuery q) {
+        int topK = q.getTopK() == null ? 8 : Math.max(1, Math.min(q.getTopK(), 50));
+        String combined = buildCombinedQuery(
+                q.getQuery(),
+                q.getIncludeKeywords() == null ? null : String.join(" ", q.getIncludeKeywords()),
+                q.getExcludeKeywords() == null ? null : String.join(",", q.getExcludeKeywords()));
+
+        Collection<Long> excluded = q.getReportId() == null ? Collections.emptyList()
+                : excludedMapper.selectList(new QueryWrapper<ReportExcludedChunk>()
+                        .eq("report_id", q.getReportId()))
+                .stream().map(ReportExcludedChunk::getChunkId).collect(Collectors.toSet());
+
+        String expr = toBooleanModeExpression(combined);
+        log.debug("RAG enhanced kbs={} expr={} excluded={}", q.getKbIds(), expr, excluded.size());
+
+        List<RagChunkHit> hits = chunkMapper.searchFulltextEnhanced(
+                q.getKbIds(), expr, topK, excluded.isEmpty() ? null : excluded);
+
+        // 计算高亮区间：用 query + includeKeywords 的字符级匹配
+        List<String> highlightTerms = collectHighlightTerms(q);
+        for (RagChunkHit h : hits) {
+            h.setHighlightSpans(computeSpans(h.getContent(), highlightTerms));
+        }
+
+        RagSearchResponse resp = new RagSearchResponse();
+        resp.setQuery(q.getQuery());
+        resp.setTopK(topK);
+        resp.setHits(hits);
+        return resp;
+    }
+
+    @Override
+    public void excludeChunk(Long reportId, Long chunkId) {
+        // 唯一键 (report_id, chunk_id) 已在 DDL 设为复合主键，重复 insert 会报错，先 select
+        Long exists = excludedMapper.selectCount(new QueryWrapper<ReportExcludedChunk>()
+                .eq("report_id", reportId).eq("chunk_id", chunkId));
+        if (exists != null && exists > 0) return;
+        ReportExcludedChunk e = new ReportExcludedChunk();
+        e.setReportId(reportId);
+        e.setChunkId(chunkId);
+        excludedMapper.insert(e);
+        log.info("excluded chunk={} from report={}", chunkId, reportId);
+    }
+
+    @Override
+    public void includeChunk(Long reportId, Long chunkId) {
+        excludedMapper.delete(new QueryWrapper<ReportExcludedChunk>()
+                .eq("report_id", reportId).eq("chunk_id", chunkId));
+    }
+
+    private List<String> collectHighlightTerms(RagSearchQuery q) {
+        List<String> out = new ArrayList<>();
+        if (q.getQuery() != null) {
+            for (String t : q.getQuery().split("\\s+")) if (!t.isBlank() && t.length() > 1) out.add(t);
+        }
+        if (q.getIncludeKeywords() != null) out.addAll(q.getIncludeKeywords());
+        return out;
+    }
+
+    private List<int[]> computeSpans(String text, List<String> terms) {
+        if (text == null || terms == null || terms.isEmpty()) return Collections.emptyList();
+        List<int[]> spans = new ArrayList<>();
+        for (String k : terms) {
+            if (k == null || k.isBlank()) continue;
+            int idx = 0;
+            while ((idx = text.indexOf(k, idx)) >= 0) {
+                spans.add(new int[]{idx, idx + k.length()});
+                idx += k.length();
+                if (spans.size() > 30) return spans;
+            }
+        }
+        return spans;
     }
 }

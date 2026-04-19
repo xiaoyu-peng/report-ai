@@ -1,6 +1,7 @@
 package com.reportai.hub.knowledge.service;
 
 import com.reportai.hub.knowledge.dto.RagChunkHit;
+import com.reportai.hub.knowledge.dto.RagSearchQuery;
 import com.reportai.hub.knowledge.dto.RagSearchResponse;
 
 import java.util.List;
@@ -20,4 +21,16 @@ public interface RagSearchService {
      */
     List<RagChunkHit> searchRaw(Long kbId, String query, int topK,
                                 String includeKeywords, String excludeKeywords);
+
+    /**
+     * T5 增强检索：多 KB + 排除已 excluded chunk + 段落定位 + 高亮区间。
+     * 用于工作台「参考资料」面板和报告生成的引用埋点。
+     */
+    RagSearchResponse search(RagSearchQuery query);
+
+    /** 标记某 chunk 在某报告里被排除，下次检索 NOT IN 它。 */
+    void excludeChunk(Long reportId, Long chunkId);
+
+    /** 取消排除（点错了想恢复）。 */
+    void includeChunk(Long reportId, Long chunkId);
 }
