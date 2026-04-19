@@ -87,8 +87,10 @@
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="上传时间" width="180" />
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
+            <el-button link type="primary" @click="openViewer(row, 'view')">查看</el-button>
+            <el-button link type="primary" @click="openViewer(row, 'edit')">编辑</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -97,6 +99,49 @@
         </template>
       </el-table>
     </el-card>
+
+    <!-- 文档查看 / 编辑对话框：同一个 Dialog 按 viewerMode 切换 -->
+    <el-dialog
+      v-model="viewerVisible"
+      :title="(viewerMode === 'edit' ? '编辑文档：' : '查看文档：') + (viewerDoc?.filename || '')"
+      width="900px"
+      top="5vh"
+      :close-on-click-modal="false"
+    >
+      <div v-loading="viewerLoading">
+        <el-form label-width="70px" class="viewer-form">
+          <el-form-item label="文件名">
+            <el-input v-model="viewerFilename" :disabled="viewerMode === 'view'" />
+          </el-form-item>
+          <el-form-item label="正文">
+            <el-input
+              v-model="viewerContent"
+              type="textarea"
+              :rows="22"
+              :readonly="viewerMode === 'view'"
+              resize="vertical"
+              placeholder="（文档正文）"
+            />
+          </el-form-item>
+          <div class="viewer-meta" v-if="viewerDoc">
+            <el-tag size="small" effect="plain">分块 {{ viewerDoc.chunkCount }}</el-tag>
+            <el-tag size="small" effect="plain">{{ formatSize(viewerDoc.fileSize) }}</el-tag>
+            <span class="viewer-hint" v-if="viewerMode === 'edit'">
+              保存时若正文变更将重新分块，检索结果会随之更新。
+            </span>
+          </div>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="viewerVisible = false">关闭</el-button>
+        <el-button
+          v-if="viewerMode === 'edit'"
+          type="primary"
+          :loading="saving"
+          @click="saveViewer"
+        >保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -108,6 +153,8 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 import {
   getKnowledgeBases,
   getDocuments,
+  getDocument,
+  updateDocument,
   uploadDocument,
   deleteDocument,
   searchKnowledge,
@@ -127,7 +174,71 @@ const searchQuery = ref('')
 const searching = ref(false)
 const searchResults = ref<any[]>([])
 
+// 查看 / 编辑 Dialog 状态：共用一个 Dialog，用 viewerMode 区分只读还是可编辑
+const viewerVisible = ref(false)
+const viewerLoading = ref(false)
+const viewerMode = ref<'view' | 'edit'>('view')
+const viewerDoc = ref<KnowledgeDocument | null>(null)
+const viewerFilename = ref('')
+const viewerContent = ref('')
+const saving = ref(false)
+
+async function openViewer(row: KnowledgeDocument, mode: 'view' | 'edit') {
+  viewerMode.value = mode
+  viewerDoc.value = row
+  viewerFilename.value = row.filename
+  viewerContent.value = ''
+  viewerVisible.value = true
+  viewerLoading.value = true
+  try {
+    const res = await getDocument(row.id)
+    const full = (res as any).data as KnowledgeDocument
+    if (full) {
+      viewerDoc.value = full
+      viewerFilename.value = full.filename
+      viewerContent.value = full.content ?? ''
+    }
+  } catch (e) {
+    console.error('加载文档失败:', e)
+    ElMessage.error('加载文档失败')
+  } finally {
+    viewerLoading.value = false
+  }
+}
+
+async function saveViewer() {
+  if (!viewerDoc.value) return
+  if (!viewerFilename.value.trim()) {
+    ElMessage.warning('文件名不能为空')
+    return
+  }
+  saving.value = true
+  try {
+    const payload: { filename?: string; content?: string } = {
+      filename: viewerFilename.value.trim()
+    }
+    // 正文和原始不一致才一并提交，避免大 content 白白往返
+    if (viewerContent.value !== (viewerDoc.value.content ?? '')) {
+      payload.content = viewerContent.value
+    }
+    await updateDocument(viewerDoc.value.id, payload)
+    ElMessage.success('保存成功')
+    viewerVisible.value = false
+    await loadDocuments()
+  } catch (e) {
+    console.error('保存文档失败:', e)
+  } finally {
+    saving.value = false
+  }
+}
+
 onMounted(async () => {
+  // route.params.id 非数字（直链 /knowledge/undefined、回退到脏 URL 等）会让后续请求带上 NaN
+  if (!Number.isFinite(kbId) || kbId <= 0) {
+    ElMessage.error('知识库 ID 无效，已返回列表')
+    router.replace('/knowledge/list')
+    return
+  }
   await Promise.all([loadKb(), loadDocuments()])
 })
 
@@ -311,5 +422,21 @@ function clearSearch() {
   font-size: 13px;
   line-height: 1.7;
   color: #334155;
+}
+.viewer-form :deep(.el-textarea__inner) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.viewer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 70px;
+  color: #64748b;
+  font-size: 12px;
+}
+.viewer-hint {
+  color: #94a3b8;
 }
 </style>

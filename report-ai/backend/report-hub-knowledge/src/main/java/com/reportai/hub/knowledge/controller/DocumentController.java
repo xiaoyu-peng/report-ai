@@ -65,10 +65,26 @@ public class DocumentController {
         return Result.success(documentMapper.selectById(id));
     }
 
+    @Operation(summary = "更新文档：rename + 可选替换正文（替换会重建 chunk）")
+    @PutMapping("/documents/{id}")
+    public Result<KnowledgeDocument> update(@PathVariable Long id,
+                                            @RequestBody DocumentUpdateDTO dto) {
+        return Result.success(documentService.update(id, dto.getFilename(),
+                dto.getContent(), UserContext.getUserId()));
+    }
+
     @Operation(summary = "删除文档并级联清 chunk")
     @DeleteMapping("/documents/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         documentService.deleteCascade(id);
         return Result.success();
+    }
+
+    @lombok.Data
+    public static class DocumentUpdateDTO {
+        /** 可选，非空则 rename。 */
+        private String filename;
+        /** 可选，非 null 则替换正文并重新分块。 */
+        private String content;
     }
 }

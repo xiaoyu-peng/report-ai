@@ -34,7 +34,8 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        // 后端默认在 IDE 跑（端口 8080）；若需打回旧的 docker-backend(8081) 用 VITE_API_TARGET 覆盖
+        target: process.env.VITE_API_TARGET || 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '/api'),
       },

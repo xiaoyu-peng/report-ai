@@ -157,7 +157,12 @@ async function fetchList() {
   }
 }
 
-function goDetail(id: number) {
+function goDetail(id: number | undefined | null) {
+  // 防御：列表项偶尔会出现 id 为空（创建中、接口异常），点击后旧逻辑会跳到 /knowledge/undefined → 详情页 NaN
+  if (id == null || !Number.isFinite(Number(id))) {
+    ElMessage.warning('该知识库尚未就绪，请稍后再试')
+    return
+  }
   router.push(`/knowledge/${id}`)
 }
 

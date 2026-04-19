@@ -109,6 +109,46 @@ public class DocumentServiceImpl implements DocumentService {
         baseService.refreshCounters(doc.getKbId());
     }
 
+    @Override
+    @Transactional
+    public KnowledgeDocument update(Long docId, String filename, String content, Long operatorId) {
+        KnowledgeDocument doc = documentMapper.selectById(docId);
+        if (doc == null) throw new BusinessException("文档不存在：id=" + docId);
+
+        if (filename != null && !filename.isBlank()) {
+            doc.setFilename(filename.trim());
+        }
+
+        boolean contentChanged = content != null && !content.equals(doc.getContent());
+        if (contentChanged) {
+            // 正文变了就重建 chunk：先清旧，再按新内容走一遍 chunker。
+            // 编辑路径进来的是纯文本（无页码概念），所以 pages 只放一段。
+            chunkMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KnowledgeChunk>()
+                    .eq("doc_id", docId));
+            doc.setContent(truncateForDb(content));
+            doc.setFileSize((long) content.getBytes(StandardCharsets.UTF_8).length);
+            List<com.reportai.hub.knowledge.service.TextChunker.PageAwareChunk> pieces =
+                    textChunker.chunkByPage(List.of(content));
+            for (int i = 0; i < pieces.size(); i++) {
+                var pc = pieces.get(i);
+                KnowledgeChunk c = new KnowledgeChunk();
+                c.setDocId(docId);
+                c.setKbId(doc.getKbId());
+                c.setChunkIndex(i);
+                c.setContent(pc.text());
+                chunkMapper.insert(c);
+            }
+            doc.setChunkCount(pieces.size());
+            doc.setStatus("success");
+        }
+
+        documentMapper.updateById(doc);
+        if (contentChanged) baseService.refreshCounters(doc.getKbId());
+        log.info("doc {} updated by {} (rename={}, rewrite={})",
+                docId, operatorId, filename != null, contentChanged);
+        return doc;
+    }
+
     // -------------------------------------------------------------------
 
     private KnowledgeDocument saveDocumentRow(Long kbId, String filename, String fileType,

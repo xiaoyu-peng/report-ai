@@ -19,6 +19,9 @@ services:
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
       - --innodb-ft-min-token-size=1
+      # 关键：强制客户端走 utf8mb4，否则 init.sql 里的中文会被当 latin1 存入，KB 种子数据乱码
+      - --skip-character-set-client-handshake
+      - --init-connect=SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
     networks:
       - report-ai-network
     healthcheck:
