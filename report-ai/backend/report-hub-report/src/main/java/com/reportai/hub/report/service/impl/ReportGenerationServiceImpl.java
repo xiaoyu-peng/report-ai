@@ -18,6 +18,7 @@ import com.reportai.hub.report.mapper.ReportTemplateMapper;
 import com.reportai.hub.report.mapper.ReportVersionMapper;
 import com.reportai.hub.report.prompt.Prompts;
 import com.reportai.hub.report.service.CitationParser;
+import com.reportai.hub.report.service.QualityMetricsService;
 import com.reportai.hub.report.service.ReportGenerationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +64,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     private final SassMcpService sassMcpService;
     private final SearchMcpService searchMcpService;
     private final CitationParser citationParser;
+    private final QualityMetricsService qualityMetricsService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -180,6 +182,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         } catch (RuntimeException ex) {
             log.warn("citation persist failed for report {}: {}", reportId, ex.getMessage());
         }
+
+        // T5：异步触发质量体检（覆盖率 + KB 分布 + 事实性可疑），不阻塞 SSE
+        CompletableFuture.runAsync(() -> {
+            try {
+                qualityMetricsService.runCheck(reportId);
+            } catch (Exception ex) {
+                log.warn("quality metrics async run failed for report {}: {}", reportId, ex.getMessage());
+            }
+        });
 
         log.info("report {} generated: {} chars, provider={}",
                 reportId, body.length(), llmClient.providerName());
