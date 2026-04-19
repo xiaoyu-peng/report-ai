@@ -558,46 +558,153 @@
       </div>
     </el-dialog>
 
-    <!-- Right: Citation Traceability Panel（仅在有 chunks 时展示） -->
-    <div v-if="chunks.length > 0" class="citations-panel">
+    <!-- Right: Traceability + Quality Panel -->
+    <div v-if="currentReportId && content" class="citations-panel">
       <el-card class="citations-card">
-        <template #header>
-          <span class="card-title">
-            <el-icon><Collection /></el-icon>
-            引用溯源
-            <el-tag size="small" type="info" effect="light" style="margin-left: 6px">
-              {{ chunks.length }}
-            </el-tag>
-          </span>
-        </template>
-        <div class="citations-list">
-          <div
-            v-for="c in chunks"
-            :key="c.index"
-            :id="`cite-card-${c.index}`"
-            class="citation-card"
-            :class="{ highlighted: highlightedCite === c.index }"
-          >
-            <div class="citation-head">
-              <span class="citation-idx">[{{ c.index }}]</span>
-              <span class="citation-icon" :title="c.fileType">{{ fileIcon(c.fileType) }}</span>
-              <span class="citation-file" :title="c.filename">{{ c.filename }}</span>
-              <el-tag v-if="pageLabel(c)" size="small" type="warning" effect="plain">
-                {{ pageLabel(c) }}
-              </el-tag>
-              <el-tag size="small" effect="plain">#{{ c.chunkIndex }}</el-tag>
+        <el-tabs v-model="rightTab" class="right-tabs">
+          <!-- Tab 1: 引用溯源 -->
+          <el-tab-pane name="citations">
+            <template #label>
+              <span class="tab-label">
+                <el-icon><Collection /></el-icon>
+                引用溯源
+                <el-tag v-if="chunks.length" size="small" type="info" effect="light">
+                  {{ chunks.length }}
+                </el-tag>
+              </span>
+            </template>
+            <div v-if="!chunks.length" class="empty-tab">
+              <el-empty description="本次生成未调用知识库，暂无溯源" :image-size="80" />
             </div>
-            <div class="citation-body">{{ c.content }}</div>
-            <div class="citation-foot">
-              <div class="citation-score">
-                <div class="score-bar">
-                  <div class="score-fill" :style="{ width: Math.min(c.score * 100, 100) + '%' }"></div>
+            <div v-else class="citations-list">
+              <div
+                v-for="c in chunks"
+                :key="c.index"
+                :id="`cite-card-${c.index}`"
+                class="citation-card"
+                :class="{ highlighted: highlightedCite === c.index }"
+              >
+                <div class="citation-head">
+                  <span class="citation-idx">[{{ c.index }}]</span>
+                  <span class="citation-icon" :title="c.fileType">{{ fileIcon(c.fileType) }}</span>
+                  <span class="citation-file" :title="c.filename">{{ c.filename }}</span>
+                  <el-tag v-if="pageLabel(c)" size="small" type="warning" effect="plain">
+                    {{ pageLabel(c) }}
+                  </el-tag>
+                  <el-tag size="small" effect="plain">#{{ c.chunkIndex }}</el-tag>
                 </div>
-                <span class="score-text">相关度 {{ (c.score * 100).toFixed(0) }}%</span>
+                <div class="citation-body">{{ c.content }}</div>
+                <div class="citation-foot">
+                  <div class="citation-score">
+                    <div class="score-bar">
+                      <div class="score-fill" :style="{ width: Math.min(c.score * 100, 100) + '%' }"></div>
+                    </div>
+                    <span class="score-text">相关度 {{ (c.score * 100).toFixed(0) }}%</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </el-tab-pane>
+
+          <!-- Tab 2: 质量检查（赛题 3.4） -->
+          <el-tab-pane name="quality">
+            <template #label>
+              <span class="tab-label">
+                <el-icon><Aim /></el-icon>
+                质量检查
+                <el-tag v-if="qualityReport?.overallScore != null"
+                        size="small"
+                        :type="qualityTagType(qualityReport.overallScore)"
+                        effect="light">
+                  {{ qualityReport.overallScore }}
+                </el-tag>
+              </span>
+            </template>
+
+            <div v-if="!qualityReport && !qualityLoading" class="empty-tab">
+              <el-empty description="一键检查覆盖度 / 引用准确性 / 事实性" :image-size="80">
+                <el-button type="primary" :disabled="generating || rewriting"
+                           @click="runQualityCheck">
+                  <el-icon><MagicStick /></el-icon>
+                  运行三维度检查
+                </el-button>
+              </el-empty>
+            </div>
+
+            <div v-else-if="qualityLoading" class="empty-tab">
+              <el-icon class="is-loading" style="font-size: 32px; color: #6366f1"><Loading /></el-icon>
+              <div style="margin-top: 12px; color: #64748b">AI 正在审阅报告…</div>
+            </div>
+
+            <div v-else-if="qualityReport" class="quality-result">
+              <div class="quality-head">
+                <div class="quality-score-block">
+                  <span class="quality-score">{{ qualityReport.overallScore ?? '—' }}</span>
+                  <span class="quality-score-label">综合评分</span>
+                </div>
+                <div class="quality-summary">{{ qualityReport.summary || '无总评' }}</div>
+              </div>
+
+              <div class="quality-dims">
+                <div class="quality-dim">
+                  <div class="quality-dim-head">
+                    <span class="quality-dim-title">📋 覆盖度</span>
+                    <span class="quality-dim-score">
+                      {{ formatPct(qualityReport.coverageScore) }}
+                    </span>
+                  </div>
+                  <ul v-if="qualityReport.missingKeyPoints?.length" class="quality-list">
+                    <li v-for="(item, i) in qualityReport.missingKeyPoints" :key="i">{{ item }}</li>
+                  </ul>
+                  <div v-else class="quality-empty">全部关键要点均已覆盖 ✓</div>
+                </div>
+
+                <div class="quality-dim">
+                  <div class="quality-dim-head">
+                    <span class="quality-dim-title">🔗 引用准确性</span>
+                    <span class="quality-dim-score">
+                      {{ formatPct(qualityReport.citationAccuracyScore) }}
+                    </span>
+                  </div>
+                  <ul v-if="qualityReport.citationIssues?.length" class="quality-list">
+                    <li v-for="(issue, i) in qualityReport.citationIssues" :key="i">
+                      <code class="cite-badge">[{{ issue.citedIndex }}]</code>
+                      <span class="issue-sentence">{{ issue.sentence }}</span>
+                      <div class="issue-reason">{{ issue.reason }}</div>
+                    </li>
+                  </ul>
+                  <div v-else class="quality-empty">未发现可疑引用 ✓</div>
+                </div>
+
+                <div class="quality-dim">
+                  <div class="quality-dim-head">
+                    <span class="quality-dim-title">✅ 事实性</span>
+                    <span class="quality-dim-score">
+                      {{ formatPct(qualityReport.factualityScore) }}
+                    </span>
+                  </div>
+                  <ul v-if="qualityReport.factualityIssues?.length" class="quality-list">
+                    <li v-for="(issue, i) in qualityReport.factualityIssues" :key="i">
+                      <el-tag size="small" :type="suggestionTagType(issue.suggestion)" effect="plain">
+                        {{ suggestionLabel(issue.suggestion) }}
+                      </el-tag>
+                      <span class="issue-sentence">{{ issue.sentence }}</span>
+                      <div class="issue-reason">{{ issue.reason }}</div>
+                    </li>
+                  </ul>
+                  <div v-else class="quality-empty">未发现无源杜撰 ✓</div>
+                </div>
+              </div>
+
+              <div class="quality-actions">
+                <el-button size="small" :disabled="qualityLoading" @click="runQualityCheck">
+                  <el-icon><Refresh /></el-icon>
+                  重新检查
+                </el-button>
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </el-card>
     </div>
   </div>
@@ -627,7 +734,9 @@ import {
   ChatDotRound,
   Switch,
   SetUp,
-  Promotion
+  Promotion,
+  Aim,
+  Refresh
 } from '@element-plus/icons-vue'
 import { getKnowledgeBases, type KnowledgeBase } from '@/api/knowledge'
 import {
@@ -637,8 +746,10 @@ import {
   mcpSearchArticles,
   tavilySearch,
   fetchUrl as fetchUrlApi,
+  checkReportQuality,
   type Template,
-  type RewriteMode
+  type RewriteMode,
+  type QualityReport
 } from '@/api/report'
 import { useUserStore } from '@/stores/user'
 import { renderReportMarkdown } from '@/utils/markdown'
@@ -703,6 +814,13 @@ const templates = ref<Template[]>([])
 // 引用溯源状态 —— 后端通过 SSE chunks 事件推送 RAG top-k 命中列表。
 const chunks = ref<ChunkHit[]>([])
 const highlightedCite = ref<number | null>(null)
+
+// 右侧面板的 tab：citations | quality
+const rightTab = ref<'citations' | 'quality'>('citations')
+
+// 质量检查状态
+const qualityReport = ref<QualityReport | null>(null)
+const qualityLoading = ref(false)
 
 // MCP 舆情数据引入状态
 const showMcpDialog = ref(false)
@@ -924,6 +1042,8 @@ async function handleGenerate() {
   generating.value = true
   content.value = ''
   chunks.value = []
+  qualityReport.value = null // 新报告产生，旧的质检结果就过时了
+  rightTab.value = 'citations'
   currentReportId.value = null
   // 生成期保持 edit 态，方便用户看 token 流；完成后再切到 preview。
   viewMode.value = 'edit'
@@ -1058,6 +1178,7 @@ async function handleRewrite(mode: RewriteMode) {
 
   rewriting.value = true
   const originalContent = content.value
+  qualityReport.value = null // 改写后旧质检结果过时
   // CONTINUATION：原稿保留不变，SSE 流出来的新章节追加到末尾；其他模式清空后接收整稿。
   const isContinuation = mode === 'CONTINUATION'
   if (!isContinuation) content.value = ''
@@ -1148,17 +1269,64 @@ function handleCiteClick(e: MouseEvent) {
 }
 
 function scrollToCitation(n: number) {
-  const el = document.getElementById(`cite-card-${n}`)
-  if (!el) {
-    ElMessage.warning(`未找到第 ${n} 条引用`)
-    return
+  // 点击角标优先切到"引用溯源"tab；tab 切换后 DOM 才可见，用 nextTick 等一下再 scroll。
+  if (rightTab.value !== 'citations') rightTab.value = 'citations'
+  nextTick(() => {
+    const el = document.getElementById(`cite-card-${n}`)
+    if (!el) {
+      ElMessage.warning(`未找到第 ${n} 条引用`)
+      return
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    highlightedCite.value = n
+    // 1.5s 后撤销高亮；若期间又点了别的则不动它
+    window.setTimeout(() => {
+      if (highlightedCite.value === n) highlightedCite.value = null
+    }, 1500)
+  })
+}
+
+// -------- 质量检查（赛题 3.4） --------
+
+async function runQualityCheck() {
+  if (!currentReportId.value) return
+  qualityLoading.value = true
+  try {
+    const res = await checkReportQuality(currentReportId.value)
+    qualityReport.value = (res as any).data as QualityReport
+  } catch (e: any) {
+    console.error('质量检查失败:', e)
+    ElMessage.error(e?.message || '质量检查失败，请稍后重试')
+  } finally {
+    qualityLoading.value = false
   }
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  highlightedCite.value = n
-  // 1.5s 后撤销高亮；若期间又点了别的则不动它
-  window.setTimeout(() => {
-    if (highlightedCite.value === n) highlightedCite.value = null
-  }, 1500)
+}
+
+function formatPct(v: number | null | undefined): string {
+  if (v == null || isNaN(v as number)) return '—'
+  return Math.round(v * 100) + '%'
+}
+
+function qualityTagType(score: number | null | undefined): 'success' | 'warning' | 'danger' {
+  if (score == null) return 'warning'
+  if (score >= 80) return 'success'
+  if (score >= 60) return 'warning'
+  return 'danger'
+}
+
+function suggestionLabel(s: string | undefined): string {
+  switch (s) {
+    case 'mark': return '标待核实'
+    case 'fix': return '修正数据'
+    case 'soften': return '弱化语气'
+    default: return s || '待处理'
+  }
+}
+
+function suggestionTagType(s: string | undefined): 'info' | 'warning' | 'danger' {
+  if (s === 'fix') return 'danger'
+  if (s === 'soften') return 'warning'
+  return 'info'
 }
 
 async function searchMcpArticles() {
@@ -1696,7 +1864,143 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 .citations-card :deep(.el-card__body) {
   flex: 1;
   overflow: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.right-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.right-tabs :deep(.el-tabs__header) {
+  margin: 0 12px;
+}
+.right-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow: auto;
   padding: 12px;
+}
+.right-tabs :deep(.el-tab-pane) {
+  height: 100%;
+}
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.empty-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 300px;
+  color: #64748b;
+  font-size: 13px;
+}
+.quality-result {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.quality-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.quality-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 64px;
+}
+.quality-score {
+  font-size: 28px;
+  font-weight: 700;
+  color: #4338ca;
+  line-height: 1;
+}
+.quality-score-label {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6366f1;
+}
+.quality-summary {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+}
+.quality-dims {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quality-dim {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.quality-dim-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.quality-dim-title {
+  font-weight: 600;
+  color: #1e293b;
+}
+.quality-dim-score {
+  color: #6366f1;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.quality-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #475569;
+}
+.quality-list li {
+  margin-bottom: 8px;
+}
+.quality-empty {
+  font-size: 12px;
+  color: #10b981;
+}
+.issue-sentence {
+  color: #1e293b;
+  margin-left: 4px;
+}
+.issue-reason {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+.cite-badge {
+  display: inline-block;
+  background: #eef2ff;
+  color: #6366f1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.quality-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 .citations-list {
   display: flex;

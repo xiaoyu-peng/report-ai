@@ -28,8 +28,12 @@ public final class Prompts {
     public static final String GENERATION_SYSTEM = """
             你是一位资深专业分析报告撰稿人。必须严格遵守：
 
-            1. **事实性**：仅基于提供的"参考资料"作答，不得编造数据或事实。
-               若资料不足以支撑某段观点，请直接承认（例：数据暂缺、需进一步调研）。
+            1. **事实性（硬约束）**：仅基于提供的"参考资料"作答，不得编造数据或事实。
+               具体规则：
+               - 具体的数字 / 百分比 / 金额 / 日期 / 人名 / 机构名，若无任何参考分块支撑，
+                 必须用 `[待核实]` 占位，不得杜撰；
+               - 不得将粗略的描述性信息"加工"成虚假的精确数据；
+               - 资料覆盖不足时直接承认（例："公开数据暂缺，需结合内部调研进一步验证"）。
             2. **结构**：顶层用"一、二、三"，次级用"（一）（二）（三）"。章节层级
                需严格匹配风格指南 section_hierarchy。
             3. **语气与长度**：严格参照风格指南的 tone / data_density /
@@ -127,6 +131,50 @@ public final class Prompts {
 
                 请基于上方模式要求输出。
                 """.formatted(originalContent);
+    }
+
+    /** 质量检查 system —— 要求输出严格 JSON，便于后端反序列化。 */
+    public static final String QUALITY_CHECK_SYSTEM = """
+            你是一位质量审核员，针对一份 AI 生成的报告做 3 维度审查：
+
+            1) **覆盖度**：用户给出的"关键要点"是否在正文中体现？
+               未覆盖的要点逐条列出（原文）。
+            2) **引用准确性**：正文里每一处 `[n]` 角标，其支撑句是否能从编号 n 对应的参考分块中推出？
+               对可疑句给出（citedIndex, sentence, reason）。
+               判断宽严度：只要句子的**核心事实**能从分块中看出即算通过；无需逐字匹配。
+            3) **事实性**：正文里是否存在**没有任何分块支撑**的具体数字 / 姓名 / 机构 / 日期？
+               如果用 `[待核实]` 占位，视为合法；否则列出来，并给出建议（mark-待核实 / fix-数据错误 / soften-语气弱化）。
+
+            **必须**只输出一段 JSON（不要 Markdown 代码块、不要解释）。Schema：
+            {
+              "overallScore": 0-100 的综合评分,
+              "summary": "一句话总评，中文",
+              "coverageScore": 0-1,
+              "missingKeyPoints": ["..."],
+              "citationAccuracyScore": 0-1,
+              "citationIssues": [{"citedIndex": 2, "sentence": "...", "reason": "..."}],
+              "factualityScore": 0-1,
+              "factualityIssues": [{"sentence": "...", "reason": "...", "suggestion": "mark|fix|soften"}]
+            }
+            三项皆无问题时，对应数组返回空列表 []；不可省略键。
+            """;
+
+    /** 合成质量检查 user prompt。ragContext 由 RAG 命中的分块拼成（与生成时一致）。 */
+    public static String buildQualityCheckUser(String keyPointsBulleted,
+                                               String reportContent,
+                                               String ragContext) {
+        return """
+                【用户关键要点】
+                %s
+
+                【参考资料（1..N 编号与正文 [n] 对应）】
+                %s
+
+                【待审报告正文】
+                %s
+
+                请按 system 里的 JSON schema 输出一段 JSON。
+                """.formatted(nz(keyPointsBulleted), nz(ragContext), nz(reportContent));
     }
 
     private static String nz(String s) {

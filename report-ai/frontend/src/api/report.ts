@@ -109,6 +109,30 @@ export const getVersionDiffByNum = (reportId: number, fromVersion: number, toVer
 export const exportDocx = (reportId: number) =>
   request.get(`/v1/reports/${reportId}/export/docx`, { responseType: 'blob' })
 
+// Quality check — 赛题 3.4 三维度（覆盖度 / 引用准确性 / 事实性）
+export interface QualityCitationIssue {
+  citedIndex: number
+  sentence: string
+  reason: string
+}
+export interface QualityFactualityIssue {
+  sentence: string
+  reason: string
+  suggestion: 'mark' | 'fix' | 'soften' | string
+}
+export interface QualityReport {
+  overallScore?: number | null
+  summary?: string
+  coverageScore?: number | null
+  missingKeyPoints?: string[]
+  citationAccuracyScore?: number | null
+  citationIssues?: QualityCitationIssue[]
+  factualityScore?: number | null
+  factualityIssues?: QualityFactualityIssue[]
+}
+export const checkReportQuality = (reportId: number) =>
+  request.get<QualityReport>(`/v1/reports/${reportId}/quality/check`)
+
 // Dashboard stats
 export interface DashboardStats {
   totalReports: number
