@@ -52,6 +52,8 @@ public class OperationLog implements Serializable {
 
     private String errorMessage;
 
+    /** 数据库列名是 duration（迁移自第一站时保留原名）；MyBatis Plus 默认下划线转换会解析成 duration_ms 导致 SQL 出错。 */
+    @TableField("duration")
     private Integer durationMs;
 
     @TableField(fill = FieldFill.INSERT)
