@@ -77,6 +77,8 @@ public class RewriteServiceImpl implements RewriteService {
         v.setVersionNum(baseVer + 1);
         v.setTitle(report.getTitle());
         v.setContent(body);
+        // T5 修订视图 diff 所需：保留改写前的原文用于三色对比
+        v.setBeforeContent(original);
         v.setSourceMode("rewrite_" + mode.name().toLowerCase(Locale.ROOT));
         v.setWordCount(body.length());
         v.setCreatedBy(operatorId);
@@ -247,8 +249,9 @@ public class RewriteServiceImpl implements RewriteService {
 
         Report report = reportMapper.selectById(reportId);
         if (report != null && report.getContent() != null) {
-            String updatedContent = report.getContent().replace(sectionContent.trim(), newSection);
-            if (!updatedContent.equals(report.getContent())) {
+            String oldFull = report.getContent();   // 改写前快照，diff 用
+            String updatedContent = oldFull.replace(sectionContent.trim(), newSection);
+            if (!updatedContent.equals(oldFull)) {
                 report.setContent(updatedContent);
                 report.setWordCount(updatedContent.length());
                 reportMapper.updateById(report);
@@ -264,6 +267,8 @@ public class RewriteServiceImpl implements RewriteService {
                 v.setVersionNum(baseVer + 1);
                 v.setTitle(report.getTitle());
                 v.setContent(updatedContent);
+                // 段落级改写也保留改写前的全文，diff 视图能定位到具体段
+                v.setBeforeContent(oldFull);
                 v.setSourceMode("rewrite_section_" + mode);
                 v.setWordCount(updatedContent.length());
                 v.setCreatedBy(operatorId);

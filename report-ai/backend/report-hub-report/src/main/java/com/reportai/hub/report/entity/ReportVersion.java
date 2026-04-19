@@ -18,6 +18,8 @@ public class ReportVersion {
     private Integer versionNum;
     private String title;
     private String content;
+    /** 改写前的原文（diff 视图三色对比所需）；首版/手动编辑时与 content 相同或为 null。 */
+    private String beforeContent;
     private String changeSummary;
     /** initial / regenerate / rewrite_data_update / rewrite_angle_shift /
      *  rewrite_expand / rewrite_style_shift / manual_edit */
