@@ -178,6 +178,122 @@
             </div>
             <el-empty v-else-if="!diffLoading" description="选择两个版本后点击对比" />
           </el-tab-pane>
+
+          <el-tab-pane name="quality">
+            <template #label>
+              <span>
+                <el-icon style="vertical-align: -2px"><MagicStick /></el-icon>
+                质量检查
+              </span>
+            </template>
+            <div class="quality-panel" v-loading="qualityLoading" element-loading-text="AI 正在审查报告覆盖度 / 引用准确性 / 事实性…">
+              <div v-if="!qualityReport && !qualityLoading" class="quality-empty">
+                <el-icon :size="44" color="#6366f1"><MagicStick /></el-icon>
+                <div class="quality-empty-title">AI 审查员待命</div>
+                <div class="quality-empty-desc">
+                  对本报告从 <b>覆盖度</b>、<b>引用准确性</b>、<b>事实性</b> 三个维度做一次体检，
+                  帮助定位要点漏写、引用错配、无源数据等问题（赛题 3.4）。
+                </div>
+                <el-button type="primary" size="large" @click="runQualityCheck">
+                  <el-icon><MagicStick /></el-icon>
+                  开始质量检查
+                </el-button>
+              </div>
+
+              <div v-if="qualityReport" class="quality-result">
+                <div class="quality-header">
+                  <div class="quality-score-card">
+                    <div class="quality-score-big" :class="'tone-' + scoreTagType(qualityReport.overallScore)">
+                      {{ qualityReport.overallScore ?? '—' }}
+                      <span class="quality-score-unit">/100</span>
+                    </div>
+                    <div class="quality-score-label">综合得分</div>
+                  </div>
+                  <div class="quality-summary">
+                    <div class="quality-summary-title">AI 一句话总评</div>
+                    <div class="quality-summary-text">{{ qualityReport.summary || '（未给出总评）' }}</div>
+                    <div class="quality-summary-meta">
+                      检查时间 {{ qualityCheckedAt }}
+                      <el-button link type="primary" size="small" @click="runQualityCheck">
+                        <el-icon><RefreshLeft /></el-icon>
+                        重新检查
+                      </el-button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="quality-dims">
+                  <div class="quality-dim-card">
+                    <div class="dim-head">
+                      <span class="dim-title">覆盖度</span>
+                      <el-tag :type="scoreTagType(qualityReport.coverageScore)" size="small" effect="plain">
+                        {{ pct(qualityReport.coverageScore) }}
+                      </el-tag>
+                    </div>
+                    <div class="dim-desc">用户要点是否被报告正文覆盖</div>
+                    <div v-if="qualityReport.missingKeyPoints?.length" class="dim-issues">
+                      <div class="dim-issues-title">未覆盖要点（{{ qualityReport.missingKeyPoints.length }}）</div>
+                      <ul>
+                        <li v-for="(it, i) in qualityReport.missingKeyPoints" :key="i">{{ it }}</li>
+                      </ul>
+                    </div>
+                    <el-empty v-else description="全部要点已覆盖" :image-size="48" />
+                  </div>
+
+                  <div class="quality-dim-card">
+                    <div class="dim-head">
+                      <span class="dim-title">引用准确性</span>
+                      <el-tag :type="scoreTagType(qualityReport.citationAccuracyScore)" size="small" effect="plain">
+                        {{ pct(qualityReport.citationAccuracyScore) }}
+                      </el-tag>
+                    </div>
+                    <div class="dim-desc">正文 [n] 标记是否真能从对应 chunk 推出</div>
+                    <div v-if="qualityReport.citationIssues?.length" class="dim-issues">
+                      <div class="dim-issues-title">可疑引用（{{ qualityReport.citationIssues.length }}）</div>
+                      <div v-for="(it, i) in qualityReport.citationIssues" :key="i" class="issue-row">
+                        <div class="issue-badge">[{{ it.citedIndex }}]</div>
+                        <div class="issue-body">
+                          <div class="issue-sentence">{{ it.sentence }}</div>
+                          <div class="issue-reason">
+                            <el-icon><Warning /></el-icon>
+                            {{ it.reason }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <el-empty v-else description="未发现可疑引用" :image-size="48" />
+                  </div>
+
+                  <div class="quality-dim-card">
+                    <div class="dim-head">
+                      <span class="dim-title">事实性</span>
+                      <el-tag :type="scoreTagType(qualityReport.factualityScore)" size="small" effect="plain">
+                        {{ pct(qualityReport.factualityScore) }}
+                      </el-tag>
+                    </div>
+                    <div class="dim-desc">报告中是否存在无源数据 / 硬造事实</div>
+                    <div v-if="qualityReport.factualityIssues?.length" class="dim-issues">
+                      <div class="dim-issues-title">事实性疑点（{{ qualityReport.factualityIssues.length }}）</div>
+                      <div v-for="(it, i) in qualityReport.factualityIssues" :key="i" class="issue-row">
+                        <div class="issue-badge issue-badge-warn">!</div>
+                        <div class="issue-body">
+                          <div class="issue-sentence">{{ it.sentence }}</div>
+                          <div class="issue-reason">
+                            <el-icon><Warning /></el-icon>
+                            {{ it.reason }}
+                          </div>
+                          <el-tag size="small" type="warning" effect="light">
+                            建议：{{ suggestionLabel(it.suggestion) }}
+                          </el-tag>
+                        </div>
+                      </div>
+                    </div>
+                    <el-empty v-else description="未发现事实性问题" :image-size="48" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </div>
 
@@ -227,8 +343,8 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit } from '@element-plus/icons-vue'
-import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, type Report, type ReportVersion } from '@/api/report'
+import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit, MagicStick, Warning } from '@element-plus/icons-vue'
+import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, checkReportQuality, type Report, type ReportVersion, type QualityReport } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
 import * as Diff from 'diff'
 import ReportCharts from '@/components/ReportCharts.vue'
@@ -273,6 +389,45 @@ interface OutlineItem {
 
 const outlineItems = ref<OutlineItem[]>([])
 const activeOutlineId = ref('')
+
+// —— 赛题 3.4 质量检查 ——
+const qualityReport = ref<QualityReport | null>(null)
+const qualityLoading = ref(false)
+const qualityCheckedAt = ref<string>('')
+
+async function runQualityCheck() {
+  qualityLoading.value = true
+  try {
+    const res = await checkReportQuality(reportId)
+    qualityReport.value = (res as any).data as QualityReport
+    qualityCheckedAt.value = formatTime(new Date().toISOString())
+    ElMessage.success('质量检查完成')
+  } catch (e: any) {
+    console.error('质量检查失败:', e)
+    ElMessage.error(e?.response?.data?.message || '质量检查失败，请稍后再试')
+  } finally {
+    qualityLoading.value = false
+  }
+}
+
+function pct(v?: number | null): string {
+  if (v == null || isNaN(v)) return '—'
+  const n = v <= 1 ? v * 100 : v
+  return `${Math.round(n)}%`
+}
+
+function scoreTagType(v?: number | null): 'success' | 'warning' | 'danger' | 'info' {
+  if (v == null) return 'info'
+  const n = v <= 1 ? v * 100 : v
+  if (n >= 85) return 'success'
+  if (n >= 70) return 'warning'
+  return 'danger'
+}
+
+function suggestionLabel(s?: string): string {
+  const m: Record<string, string> = { mark: '标注待核实', fix: '修正数据', soften: '语气弱化' }
+  return s ? (m[s] || s) : '建议人工复核'
+}
 
 onMounted(async () => {
   await Promise.all([loadReport(), loadVersions()])
@@ -1095,5 +1250,190 @@ function formatTime(v?: string): string {
 
 .version-actions {
   margin-top: 4px;
+}
+
+/* 赛题 3.4 质量检查面板 */
+.quality-panel {
+  min-height: 300px;
+}
+.quality-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  gap: 12px;
+  text-align: center;
+  color: #64748b;
+}
+.quality-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.quality-empty-desc {
+  max-width: 480px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.quality-result { padding: 4px; }
+.quality-header {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+.quality-score-card {
+  flex-shrink: 0;
+  width: 160px;
+  padding: 20px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ede9fe 0%, #e0e7ff 100%);
+  border: 1px solid #c7d2fe;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.quality-score-big {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  color: #6366f1;
+  display: flex;
+  align-items: baseline;
+}
+.quality-score-big.tone-success { color: #059669; }
+.quality-score-big.tone-warning { color: #d97706; }
+.quality-score-big.tone-danger { color: #dc2626; }
+.quality-score-unit {
+  font-size: 14px;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-left: 4px;
+}
+.quality-score-label {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+}
+.quality-summary {
+  flex: 1;
+  padding: 20px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.quality-summary-title {
+  font-size: 12px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.quality-summary-text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #1e293b;
+}
+.quality-summary-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.quality-dims {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1100px) {
+  .quality-dims { grid-template-columns: 1fr; }
+}
+.quality-dim-card {
+  padding: 16px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dim-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dim-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.dim-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+.dim-issues {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+.dim-issues-title {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.dim-issues ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.7;
+}
+.issue-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+.issue-badge {
+  flex-shrink: 0;
+  width: 28px;
+  height: 22px;
+  border-radius: 4px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.issue-badge-warn {
+  background: #d97706;
+}
+.issue-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.issue-sentence {
+  font-size: 13px;
+  color: #1e293b;
+  line-height: 1.6;
+}
+.issue-reason {
+  font-size: 12px;
+  color: #b91c1c;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>
