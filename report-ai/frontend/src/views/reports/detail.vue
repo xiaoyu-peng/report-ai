@@ -95,6 +95,16 @@
             </div>
 
             <div v-if="diffResult">
+              <!-- "变更背景"卡：展示 toVersion 的 change_summary（含模式/MCP/字数变化等） -->
+              <div v-if="toVersionSummary" class="change-context-card">
+                <div class="change-context-icon">🗒️</div>
+                <div class="change-context-body">
+                  <div class="change-context-title">
+                    变更背景 · v{{ diffFrom }} → v{{ diffTo }}
+                  </div>
+                  <div class="change-context-meta">{{ toVersionSummary }}</div>
+                </div>
+              </div>
               <!-- 后端 LCS 算出的精确统计；fallback 时可能为空，这时兜底用客户端 changeStats -->
               <div class="diff-stats-bar">
                 <el-tag v-if="diffStats" type="success" effect="plain">
@@ -417,6 +427,13 @@ function computeSimpleDiff(oldContent: string, newContent: string): { oldLines: 
   }
   return { oldLines, newLines }
 }
+
+/** toVersion 的 change_summary（"变更背景"卡文案） */
+const toVersionSummary = computed(() => {
+  if (!diffTo.value) return ''
+  const v = versions.value.find(x => x.versionNum === diffTo.value)
+  return v?.changeSummary || ''
+})
 
 const changeStats = computed(() => {
   if (!diffResult.value) return { added: 0, removed: 0 }
@@ -842,6 +859,37 @@ function formatTime(v?: string): string {
   min-height: 24px;
 }
 .line-placeholder .line-prefix { color: #cbd5e1; }
+
+/* 变更背景卡（differenze化亮点：diff ↔ 数据源叙事） */
+.change-context-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+}
+.change-context-icon {
+  font-size: 20px;
+  line-height: 1.2;
+}
+.change-context-body {
+  flex: 1;
+}
+.change-context-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4338ca;
+  margin-bottom: 4px;
+}
+.change-context-meta {
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.6;
+  word-break: break-all;
+}
 
 /* 后端 LCS 统计条 */
 .diff-stats-bar {

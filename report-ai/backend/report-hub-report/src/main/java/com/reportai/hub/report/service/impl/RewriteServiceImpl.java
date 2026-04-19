@@ -55,10 +55,10 @@ public class RewriteServiceImpl implements RewriteService {
         }
         int baseVer = latest == null ? 0 : latest.getVersionNum();
 
-        String mcpContext = buildRewriteMcpContext(report, mode, instruction);
+        ReportGenerationServiceImpl.McpResult mcpRes = buildRewriteMcpContext(report, mode, instruction);
         String system = Prompts.rewriteSystemFor(mode, instruction);
-        if (mcpContext != null && !mcpContext.isBlank()) {
-            system = system + "\n\n--- 以下是来自外部数据源的实时数据，请在改写时参考使用 ---\n" + mcpContext;
+        if (mcpRes.text() != null && !mcpRes.text().isBlank()) {
+            system = system + "\n\n--- 以下是来自外部数据源的实时数据，请在改写时参考使用 ---\n" + mcpRes.text();
         }
         String user = Prompts.buildRewriteUser(original);
 
@@ -80,7 +80,8 @@ public class RewriteServiceImpl implements RewriteService {
         v.setSourceMode("rewrite_" + mode.name().toLowerCase(Locale.ROOT));
         v.setWordCount(body.length());
         v.setCreatedBy(operatorId);
-        v.setChangeSummary("改写模式：%s".formatted(mode.name()));
+        v.setChangeSummary(buildRewriteChangeSummary(mode, instruction, mcpRes,
+                original.length(), body.length()));
         versionMapper.insert(v);
 
         report.setContent(body);
@@ -94,38 +95,65 @@ public class RewriteServiceImpl implements RewriteService {
         return v;
     }
 
-    /** 总预算 15s；与生成阶段一致，超时/异常一律 null，不拖死 SSE。 */
-    private String buildRewriteMcpContext(Report report, RewriteMode mode, String instruction) {
-        return ReportGenerationServiceImpl.withBudget(
-                () -> buildRewriteMcpContextInner(report, mode, instruction),
-                15, "rewrite-mcp");
+    /**
+     * 组装改写版本的 change_summary（差异化亮点：diff 顶部"变更背景"卡）。
+     * 典型："改写模式：EXPAND | 指令：补充 2026 趋势 | MCP: 相关文章, 案例搜索 | 1234 → 1890 字 (+656)"
+     */
+    private String buildRewriteChangeSummary(RewriteMode mode, String instruction,
+                                             ReportGenerationServiceImpl.McpResult mcp,
+                                             int originalLen, int newLen) {
+        StringBuilder s = new StringBuilder("改写模式：").append(mode.name());
+        if (instruction != null && !instruction.isBlank()) {
+            String shortIns = instruction.length() > 30 ? instruction.substring(0, 30) + "…" : instruction;
+            s.append(" · 指令: ").append(shortIns);
+        }
+        if (mcp != null && !mcp.sections().isEmpty()) {
+            s.append(" · MCP: ").append(String.join(", ", mcp.sections()));
+        }
+        int delta = newLen - originalLen;
+        s.append(" · ").append(originalLen).append(" → ").append(newLen)
+                .append(" 字 (").append(delta >= 0 ? "+" : "").append(delta).append(")");
+        return s.toString();
     }
 
-    private String buildRewriteMcpContextInner(Report report, RewriteMode mode, String instruction) {
+    /** 总预算 15s；与生成阶段一致，超时/异常一律返回 empty，不拖死 SSE。 */
+    private ReportGenerationServiceImpl.McpResult buildRewriteMcpContext(
+            Report report, RewriteMode mode, String instruction) {
+        ReportGenerationServiceImpl.McpResult r = ReportGenerationServiceImpl.withBudget(
+                () -> buildRewriteMcpContextInner(report, mode, instruction),
+                15, "rewrite-mcp");
+        return r == null ? ReportGenerationServiceImpl.McpResult.empty() : r;
+    }
+
+    private ReportGenerationServiceImpl.McpResult buildRewriteMcpContextInner(
+            Report report, RewriteMode mode, String instruction) {
         String topic = report.getTopic();
-        if (topic == null || topic.isBlank()) return null;
+        if (topic == null || topic.isBlank()) {
+            return ReportGenerationServiceImpl.McpResult.empty();
+        }
 
         StringBuilder sb = new StringBuilder();
+        java.util.List<String> used = new java.util.ArrayList<>();
         try {
             switch (mode) {
                 case DATA_UPDATE -> {
                     sb.append("【最新舆情数据】\n");
                     try {
                         var overview = sassMcpService.overview(topic, null, null);
-                        if (overview != null) sb.append("舆情概览: ").append(overview.toPrettyString()).append("\n");
+                        if (overview != null) { sb.append("舆情概览: ").append(overview.toPrettyString()).append("\n"); used.add("舆情概览"); }
                     } catch (Exception e) { log.warn("MCP overview failed in rewrite: {}", e.getMessage()); }
                     try {
                         var hotWords = sassMcpService.hotWords(topic, null, null);
-                        if (hotWords != null) sb.append("最新热词: ").append(hotWords.toPrettyString()).append("\n");
+                        if (hotWords != null) { sb.append("最新热词: ").append(hotWords.toPrettyString()).append("\n"); used.add("最新热词"); }
                     } catch (Exception e) { log.warn("MCP hotWords failed in rewrite: {}", e.getMessage()); }
                     try {
                         var articles = searchMcpService.searchArticles(topic, 1, 5);
-                        if (articles != null) sb.append("最新文章: ").append(articles.toPrettyString()).append("\n");
+                        if (articles != null) { sb.append("最新文章: ").append(articles.toPrettyString()).append("\n"); used.add("最新文章"); }
                     } catch (Exception e) { log.warn("MCP search failed in rewrite: {}", e.getMessage()); }
                     if (tavilyClient.isConfigured()) {
                         try {
                             var webResults = tavilyClient.search(topic + " 最新数据 2025", 3);
-                            if (webResults != null) sb.append("Web搜索最新数据: ").append(webResults.toPrettyString()).append("\n");
+                            if (webResults != null) { sb.append("Web搜索最新数据: ").append(webResults.toPrettyString()).append("\n"); used.add("Web搜索"); }
                         } catch (Exception e) { log.warn("Tavily search failed in rewrite: {}", e.getMessage()); }
                     }
                     sb.append("\n请使用以上最新数据替换原稿中的旧数据，保持报告结构和风格不变。");
@@ -135,12 +163,12 @@ public class RewriteServiceImpl implements RewriteService {
                     String expandTopic = (instruction != null && !instruction.isBlank()) ? instruction : topic;
                     try {
                         var articles = searchMcpService.searchArticles(expandTopic, 1, 5);
-                        if (articles != null) sb.append("相关文章: ").append(articles.toPrettyString()).append("\n");
+                        if (articles != null) { sb.append("相关文章: ").append(articles.toPrettyString()).append("\n"); used.add("相关文章"); }
                     } catch (Exception e) { log.warn("MCP search failed in expand: {}", e.getMessage()); }
                     if (tavilyClient.isConfigured()) {
                         try {
                             var webResults = tavilyClient.search(expandTopic + " 案例分析", 3);
-                            if (webResults != null) sb.append("案例搜索: ").append(webResults.toPrettyString()).append("\n");
+                            if (webResults != null) { sb.append("案例搜索: ").append(webResults.toPrettyString()).append("\n"); used.add("案例搜索"); }
                         } catch (Exception e) { log.warn("Tavily search failed in expand: {}", e.getMessage()); }
                     }
                     sb.append("\n请基于以上参考数据扩展报告内容，补充新章节或新案例。");
@@ -149,11 +177,11 @@ public class RewriteServiceImpl implements RewriteService {
                     sb.append("【不同视角数据】\n");
                     try {
                         var emotional = sassMcpService.emotionalDistribution(topic, null, null);
-                        if (emotional != null) sb.append("情感分布(多视角): ").append(emotional.toPrettyString()).append("\n");
+                        if (emotional != null) { sb.append("情感分布(多视角): ").append(emotional.toPrettyString()).append("\n"); used.add("情感分布"); }
                     } catch (Exception e) { log.warn("MCP emotional failed in angle_shift: {}", e.getMessage()); }
                     try {
                         var hotPerson = sassMcpService.callTool("hot-person", java.util.Map.of("searchKeywordType", 1, "mustKeyWord", java.util.List.of(topic), "realTime", 30));
-                        if (hotPerson != null) sb.append("关键人物: ").append(hotPerson.toPrettyString()).append("\n");
+                        if (hotPerson != null) { sb.append("关键人物: ").append(hotPerson.toPrettyString()).append("\n"); used.add("关键人物"); }
                     } catch (Exception e) { log.warn("MCP hotPerson failed: {}", e.getMessage()); }
                     sb.append("\n请从不同受众视角（如领导/公众/行业专家）重新组织报告内容。");
                 }
@@ -163,16 +191,16 @@ public class RewriteServiceImpl implements RewriteService {
                     sb.append("【续写章节的最新数据】\n");
                     try {
                         var articles = searchMcpService.searchArticles(contTopic, 1, 5);
-                        if (articles != null) sb.append("相关文章: ").append(articles.toPrettyString()).append("\n");
+                        if (articles != null) { sb.append("相关文章: ").append(articles.toPrettyString()).append("\n"); used.add("相关文章"); }
                     } catch (Exception e) { log.warn("MCP search failed in continuation: {}", e.getMessage()); }
                     try {
                         var hotWords = sassMcpService.hotWords(contTopic, null, null);
-                        if (hotWords != null) sb.append("相关热词: ").append(hotWords.toPrettyString()).append("\n");
+                        if (hotWords != null) { sb.append("相关热词: ").append(hotWords.toPrettyString()).append("\n"); used.add("相关热词"); }
                     } catch (Exception e) { log.warn("MCP hotWords failed in continuation: {}", e.getMessage()); }
                     if (tavilyClient.isConfigured()) {
                         try {
                             var webResults = tavilyClient.search(contTopic, 3);
-                            if (webResults != null) sb.append("Web搜索: ").append(webResults.toPrettyString()).append("\n");
+                            if (webResults != null) { sb.append("Web搜索: ").append(webResults.toPrettyString()).append("\n"); used.add("Web搜索"); }
                         } catch (Exception e) { log.warn("Tavily search failed in continuation: {}", e.getMessage()); }
                     }
                     sb.append("\n这些数据仅用于补充新章节的事实依据，不得改动原稿。");
@@ -183,7 +211,8 @@ public class RewriteServiceImpl implements RewriteService {
         } catch (Exception e) {
             log.warn("buildRewriteMcpContext failed: {}", e.getMessage());
         }
-        return sb.isEmpty() ? null : sb.toString();
+        String text = sb.isEmpty() ? null : sb.toString();
+        return new ReportGenerationServiceImpl.McpResult(text, used);
     }
 
     @Override

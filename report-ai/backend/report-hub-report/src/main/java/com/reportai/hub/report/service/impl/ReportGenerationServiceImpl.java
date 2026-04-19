@@ -46,6 +46,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     /** MCP 聚合阶段总预算。演示时评委最容不得"SSE 开始前干等"。 */
     private static final int MCP_BUDGET_SECONDS = 20;
 
+    /**
+     * MCP 聚合结果：拼好的 prompt 文本 + 成功拉到的小节标签（用于版本 change_summary 的"变更背景"卡）。
+     * 赛题 4.7 / 差异化亮点：diff 顶部展示"此版改写用到了哪些实时数据"。
+     */
+    public record McpResult(String text, java.util.List<String> sections) {
+        static McpResult empty() { return new McpResult(null, java.util.List.of()); }
+    }
+
     private final ReportMapper reportMapper;
     private final ReportTemplateMapper templateMapper;
     private final ReportVersionMapper versionMapper;
@@ -116,10 +124,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         String ragContext = renderRagContext(hits);
 
         // 2.5 MCP 实时数据注入（传播分析/政策影响/行业分析类模板自动拉取舆情数据）
-        String mcpContext = buildMcpContext(report);
+        McpResult mcpResult = buildMcpContext(report);
         String fullContext = ragContext;
-        if (mcpContext != null && !mcpContext.isBlank()) {
-            fullContext = ragContext + "\n\n--- 以下是来自晴天舆情 MCP 的实时数据 ---\n" + mcpContext;
+        if (mcpResult.text() != null && !mcpResult.text().isBlank()) {
+            fullContext = ragContext + "\n\n--- 以下是来自晴天舆情 MCP 的实时数据 ---\n" + mcpResult.text();
         }
 
         // 3. 组 prompt（深度三档把目标字数提示拼到 user 末尾）
@@ -160,7 +168,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         v.setSourceMode("initial");
         v.setWordCount(body.length());
         v.setCreatedBy(operatorId);
-        v.setChangeSummary("首次 AI 生成");
+        v.setChangeSummary(buildInitialChangeSummary(report, topK, hits, mcpResult, body.length()));
         versionMapper.insert(v);
 
         log.info("report {} generated: {} chars, provider={}",
@@ -170,6 +178,29 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     }
 
     // ---------------- helpers ----------------
+
+    /**
+     * 组装 v1 的 change_summary —— "变更背景"卡展示给评委看"此版本从哪来"。
+     * 典型："首次生成 · RAG 命中 7/8 条 · MCP: 舆情概览, 热门文章 · 深度 standard · 2341 字"
+     */
+    private String buildInitialChangeSummary(Report report, int topK,
+                                             List<RagChunkHit> hits, McpResult mcp, int wordCount) {
+        StringBuilder s = new StringBuilder("首次生成");
+        if (hits != null && !hits.isEmpty()) {
+            s.append(" · RAG 命中 ").append(hits.size()).append("/").append(topK).append(" 条");
+        } else if (report.getKbId() != null) {
+            s.append(" · RAG 未命中");
+        }
+        if (mcp != null && !mcp.sections().isEmpty()) {
+            s.append(" · MCP: ").append(String.join(", ", mcp.sections()));
+        }
+        String depth = report.getGenerationDepth();
+        if (depth != null && !"standard".equals(depth)) {
+            s.append(" · 深度 ").append(depth);
+        }
+        s.append(" · ").append(wordCount).append(" 字");
+        return s.toString();
+    }
 
     /** 生成深度 → RAG topK。null/未识别走 standard（8）。 */
     private int topKForDepth(String depth) {
@@ -232,45 +263,48 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 .collect(Collectors.joining("\n\n"));
     }
 
-    /** 外层：总预算 {@value #MCP_BUDGET_SECONDS}s，超时/异常一律降级为 null，不得阻塞 SSE。 */
-    private String buildMcpContext(Report report) {
-        return withBudget(() -> buildMcpContextInner(report), MCP_BUDGET_SECONDS, "generation-mcp");
+    /** 外层：总预算 {@value #MCP_BUDGET_SECONDS}s，超时/异常一律降级为 empty，不阻塞 SSE。 */
+    private McpResult buildMcpContext(Report report) {
+        McpResult r = withBudget(() -> buildMcpContextInner(report), MCP_BUDGET_SECONDS, "generation-mcp");
+        return r == null ? McpResult.empty() : r;
     }
 
-    private String buildMcpContextInner(Report report) {
+    private McpResult buildMcpContextInner(Report report) {
         String topic = report.getTopic();
-        if (topic == null || topic.isBlank()) return null;
+        if (topic == null || topic.isBlank()) return McpResult.empty();
 
         String templateName = getTemplateName(report);
-        if (templateName == null) return null;
+        if (templateName == null) return McpResult.empty();
 
         String endDate = LocalDate.now().toString();
         String startDate = LocalDate.now().minusDays(30).toString();
 
         StringBuilder mcpData = new StringBuilder();
+        java.util.List<String> used = new java.util.ArrayList<>();
 
         try {
             if (templateName.contains("传播") || templateName.contains("舆情")) {
-                appendMcpResult(mcpData, "舆情概览", sassMcpService.overview(topic, startDate, endDate));
-                appendMcpResult(mcpData, "热门文章", sassMcpService.hotArticle(topic, startDate, endDate, 5));
-                appendMcpResult(mcpData, "情感分布", sassMcpService.emotionalDistribution(topic, startDate, endDate));
-                appendMcpResult(mcpData, "渠道声量", sassMcpService.datasourceSound(topic, startDate, endDate));
-                appendMcpResult(mcpData, "事件阶段演化", sassMcpService.stageEnvolution(topic, startDate, endDate));
-                appendMcpResult(mcpData, "事件概述", sassMcpService.generateEventTopicInfo(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "舆情概览", sassMcpService.overview(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "热门文章", sassMcpService.hotArticle(topic, startDate, endDate, 5));
+                appendMcpResult(mcpData, used, "情感分布", sassMcpService.emotionalDistribution(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "渠道声量", sassMcpService.datasourceSound(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "事件阶段演化", sassMcpService.stageEnvolution(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "事件概述", sassMcpService.generateEventTopicInfo(topic, startDate, endDate));
             } else if (templateName.contains("政策")) {
-                appendMcpResult(mcpData, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
-                appendMcpResult(mcpData, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
+                appendMcpResult(mcpData, used, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
             } else if (templateName.contains("行业")) {
-                appendMcpResult(mcpData, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
-                appendMcpResult(mcpData, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
+                appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
+                appendMcpResult(mcpData, used, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
             } else {
-                appendMcpResult(mcpData, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
+                appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
             }
         } catch (Exception e) {
             log.warn("MCP data fetch failed for topic '{}': {}", topic, e.getMessage());
         }
 
-        return mcpData.length() > 0 ? mcpData.toString() : null;
+        String text = mcpData.length() > 0 ? mcpData.toString() : null;
+        return new McpResult(text, used);
     }
 
     /**
@@ -303,8 +337,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
     }
 
-    private void appendMcpResult(StringBuilder sb, String label, JsonNode data) {
+    private void appendMcpResult(StringBuilder sb, java.util.List<String> used,
+                                 String label, JsonNode data) {
         if (data == null) return;
+        used.add(label); // 记录成功拉到的小节，供版本 change_summary 展示
         sb.append("\n### ").append(label).append("\n");
         try {
             sb.append(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(data));
