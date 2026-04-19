@@ -64,6 +64,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         r.setTemplateId(dto.getTemplateId());
         r.setIncludeKeywords(dto.getIncludeKeywords());
         r.setExcludeKeywords(dto.getExcludeKeywords());
+        r.setGenerationDepth(dto.getGenerationDepth() == null ? "standard" : dto.getGenerationDepth());
         r.setStatus("draft");
         r.setWordCount(0);
         r.setCreatedBy(operatorId);
@@ -94,11 +95,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
 
         // 2. RAG 检索：用 topic + keyPoints 拼查询；include/exclude（赛题 2.3）由用户提交
+        // 生成深度控制 topK：brief=4 / standard=8 / deep=16。
+        int topK = topKForDepth(report.getGenerationDepth());
         String query = buildQuery(report);
         List<RagChunkHit> hits = Collections.emptyList();
         if (report.getKbId() != null) {
             hits = ragSearchService.searchRaw(
-                    report.getKbId(), query, RAG_TOP_K,
+                    report.getKbId(), query, topK,
                     report.getIncludeKeywords(), report.getExcludeKeywords());
         }
         // 2.1 先把命中的 chunk 清单推给前端（SSE chunks 事件），供"引用溯源"展示。
@@ -119,10 +122,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
             fullContext = ragContext + "\n\n--- 以下是来自晴天舆情 MCP 的实时数据 ---\n" + mcpContext;
         }
 
-        // 3. 组 prompt
+        // 3. 组 prompt（深度三档把目标字数提示拼到 user 末尾）
         String keyPointsBullets = renderKeyPoints(report);
         String user = Prompts.buildGenerationUser(
                 report.getTopic(), keyPointsBullets, styleJson, fullContext);
+        String depthHint = depthHintForPrompt(report.getGenerationDepth());
+        if (!depthHint.isEmpty()) user = user + "\n\n" + depthHint;
 
         // 4. 流式调用
         StringBuilder full = new StringBuilder();
@@ -165,6 +170,26 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     }
 
     // ---------------- helpers ----------------
+
+    /** 生成深度 → RAG topK。null/未识别走 standard（8）。 */
+    private int topKForDepth(String depth) {
+        if (depth == null) return 8;
+        return switch (depth) {
+            case "brief" -> 4;
+            case "deep" -> 16;
+            default -> 8;
+        };
+    }
+
+    /** 生成深度 → 追加到 user prompt 末尾的字数提示，让 LLM 控制篇幅。 */
+    private String depthHintForPrompt(String depth) {
+        if (depth == null) return "";
+        return switch (depth) {
+            case "brief" -> "【篇幅要求】 控制在 800 字内，言简意赅，只讲核心结论与关键数据；章节不超过 3 节。";
+            case "deep" -> "【篇幅要求】 目标 3500-4500 字。每节要有背景 + 数据 + 分析 + 案例 + 启示；引用密度要高。";
+            default -> ""; // standard = 默认
+        };
+    }
 
     private String buildQuery(Report report) {
         StringBuilder sb = new StringBuilder();

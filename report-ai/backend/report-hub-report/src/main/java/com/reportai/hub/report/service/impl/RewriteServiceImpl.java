@@ -157,6 +157,27 @@ public class RewriteServiceImpl implements RewriteService {
                     } catch (Exception e) { log.warn("MCP hotPerson failed: {}", e.getMessage()); }
                     sb.append("\n请从不同受众视角（如领导/公众/行业专家）重新组织报告内容。");
                 }
+                case CONTINUATION -> {
+                    // 续写新章节：使用 instruction（新章节主题）查询 MCP，拿最新舆情 / 相关文章作为新章节的事实来源
+                    String contTopic = (instruction != null && !instruction.isBlank()) ? instruction : topic;
+                    sb.append("【续写章节的最新数据】\n");
+                    try {
+                        var articles = searchMcpService.searchArticles(contTopic, 1, 5);
+                        if (articles != null) sb.append("相关文章: ").append(articles.toPrettyString()).append("\n");
+                    } catch (Exception e) { log.warn("MCP search failed in continuation: {}", e.getMessage()); }
+                    try {
+                        var hotWords = sassMcpService.hotWords(contTopic, null, null);
+                        if (hotWords != null) sb.append("相关热词: ").append(hotWords.toPrettyString()).append("\n");
+                    } catch (Exception e) { log.warn("MCP hotWords failed in continuation: {}", e.getMessage()); }
+                    if (tavilyClient.isConfigured()) {
+                        try {
+                            var webResults = tavilyClient.search(contTopic, 3);
+                            if (webResults != null) sb.append("Web搜索: ").append(webResults.toPrettyString()).append("\n");
+                        } catch (Exception e) { log.warn("Tavily search failed in continuation: {}", e.getMessage()); }
+                    }
+                    sb.append("\n这些数据仅用于补充新章节的事实依据，不得改动原稿。");
+                }
+                // STYLE_SHIFT 不拉 MCP —— 风格转换应保留原事实，无需新数据；评委读到新数据会觉得越俎代庖。
                 default -> {}
             }
         } catch (Exception e) {

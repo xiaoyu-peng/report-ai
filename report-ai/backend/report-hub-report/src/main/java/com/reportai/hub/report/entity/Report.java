@@ -22,6 +22,8 @@ public class Report extends BaseEntity {
     private String includeKeywords;
     /** 赛题 2.3：用户要排除的关键词（逗号/空白分隔）。生成时拼进 BOOLEAN query 作为 -term。 */
     private String excludeKeywords;
+    /** 生成深度：brief（简洁 800 字 / topK=4）/ standard（默认 2000 字 / topK=8）/ deep（深度 4000 字 / topK=16）。 */
+    private String generationDepth;
     private Integer wordCount;
     private Long createdBy;
 }

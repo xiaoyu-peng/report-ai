@@ -48,6 +48,8 @@ export interface CreateReportParams {
   includeKeywords?: string
   /** 赛题 2.3：需要排除的关键词 */
   excludeKeywords?: string
+  /** 生成深度：brief / standard / deep；不传 = standard */
+  generationDepth?: 'brief' | 'standard' | 'deep'
 }
 
 export interface UpdateReportParams {

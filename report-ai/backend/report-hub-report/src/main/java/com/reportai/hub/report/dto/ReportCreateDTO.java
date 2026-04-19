@@ -20,4 +20,6 @@ public class ReportCreateDTO {
     private String includeKeywords;
     /** 赛题 2.3：需要排除的关键词。同上。 */
     private String excludeKeywords;
+    /** 生成深度：brief / standard / deep；不传等价 standard。 */
+    private String generationDepth;
 }

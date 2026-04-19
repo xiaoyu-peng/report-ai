@@ -177,6 +177,28 @@
             </div>
           </el-form-item>
 
+          <el-form-item label="生成深度">
+            <el-radio-group
+              v-model="form.generationDepth"
+              :disabled="generating"
+              class="depth-group"
+            >
+              <el-radio-button value="brief">
+                简洁
+                <span class="depth-hint-inline">~800 字</span>
+              </el-radio-button>
+              <el-radio-button value="standard">
+                标准
+                <span class="depth-hint-inline">~2000 字</span>
+              </el-radio-button>
+              <el-radio-button value="deep">
+                深度
+                <span class="depth-hint-inline">~4000 字</span>
+              </el-radio-button>
+            </el-radio-group>
+            <div class="depth-footnote">影响 RAG top-k 检索数量与正文篇幅</div>
+          </el-form-item>
+
           <el-button
             type="primary"
             size="large"
@@ -823,12 +845,14 @@ const form = ref<{
   keyPoints: string
   kbId: number | null
   templateId: number | null
+  generationDepth: 'brief' | 'standard' | 'deep'
 }>({
   title: '',
   topic: '',
   keyPoints: '',
   kbId: null,
-  templateId: null
+  templateId: null,
+  generationDepth: 'standard'
 })
 
 const content = ref('')
@@ -1097,7 +1121,8 @@ async function handleGenerate() {
       templateId: form.value.templateId,
       // 赛题 2.3：把用户手填的补充/排除关键词一起下沉到后端 BOOLEAN query
       includeKeywords: includeKeywords.value.length ? includeKeywords.value.join(' ') : undefined,
-      excludeKeywords: excludeKeywords.value.length ? excludeKeywords.value.join(' ') : undefined
+      excludeKeywords: excludeKeywords.value.length ? excludeKeywords.value.join(' ') : undefined,
+      generationDepth: form.value.generationDepth
     })
     const draft = (createRes as any).data as { id: number } | null
     if (!draft?.id) {
@@ -2518,6 +2543,29 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+}
+
+.depth-group {
+  width: 100%;
+}
+.depth-group :deep(.el-radio-button__inner) {
+  width: 100%;
+  padding: 8px 10px;
+}
+.depth-group :deep(.el-radio-button) {
+  flex: 1;
+}
+.depth-hint-inline {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: normal;
+}
+.depth-footnote {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 /* ---- 引用 hover 预览浮层（Granola 式） ---- */
