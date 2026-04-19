@@ -17,6 +17,7 @@ import com.reportai.hub.report.mapper.ReportMapper;
 import com.reportai.hub.report.mapper.ReportTemplateMapper;
 import com.reportai.hub.report.mapper.ReportVersionMapper;
 import com.reportai.hub.report.prompt.Prompts;
+import com.reportai.hub.report.service.CitationParser;
 import com.reportai.hub.report.service.ReportGenerationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +62,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     private final LlmClient llmClient;
     private final SassMcpService sassMcpService;
     private final SearchMcpService searchMcpService;
+    private final CitationParser citationParser;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -170,6 +172,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         v.setCreatedBy(operatorId);
         v.setChangeSummary(buildInitialChangeSummary(report, topK, hits, mcpResult, body.length()));
         versionMapper.insert(v);
+
+        // T5：解析正文里所有 [n] → 写入 report_citation。前端 popover 直接读这张表。
+        try {
+            int n = citationParser.parseAndPersist(body, hits, reportId, v.getId(), 0);
+            log.info("citations persisted for report {}: {}", reportId, n);
+        } catch (RuntimeException ex) {
+            log.warn("citation persist failed for report {}: {}", reportId, ex.getMessage());
+        }
 
         log.info("report {} generated: {} chars, provider={}",
                 reportId, body.length(), llmClient.providerName());
