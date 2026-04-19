@@ -17,6 +17,9 @@ public class KnowledgeChunk {
     private Long kbId;
     private String content;
     private Integer chunkIndex;
+    /** PDF 源的起止页码（1-based）；非 PDF 为 null。用于溯源卡"第 X-Y 页"展示。 */
+    private Integer pageStart;
+    private Integer pageEnd;
     @TableField(fill = com.baomidou.mybatisplus.annotation.FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

@@ -126,6 +126,10 @@ CREATE TABLE IF NOT EXISTS `knowledge_chunk` (
   `kb_id` bigint NOT NULL,
   `content` text NOT NULL,
   `chunk_index` int DEFAULT 0,
+  -- 赛题模块 2.2：检索结果标注来源文档 + 页码/段落。PDF 文档有页码，
+  -- Word/TXT/Markdown 无页码，这两列对非 PDF 源保留 NULL。
+  `page_start` int DEFAULT NULL,
+  `page_end` int DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_kb_id` (`kb_id`),

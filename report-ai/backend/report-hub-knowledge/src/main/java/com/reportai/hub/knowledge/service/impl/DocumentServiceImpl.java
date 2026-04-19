@@ -51,8 +51,9 @@ public class DocumentServiceImpl implements DocumentService {
                 guessType(filename), file.getSize(), operatorId);
 
         try (InputStream in = file.getInputStream()) {
-            String text = tikaParser.extractText(in, filename);
-            finalizeDocument(doc, text);
+            // 分页抽取：PDF 每页一个元素；其他格式单元素即全文。下游 chunker 依此计算 page_start/page_end。
+            List<String> pages = tikaParser.extractPages(in, filename);
+            finalizeDocument(doc, pages);
         } catch (IOException e) {
             doc.setStatus("failed");
             documentMapper.updateById(doc);
@@ -92,7 +93,8 @@ public class DocumentServiceImpl implements DocumentService {
 
         KnowledgeDocument doc = saveDocumentRow(kbId, filename, "text/html",
                 (long) html.getBytes(StandardCharsets.UTF_8).length, operatorId);
-        finalizeDocument(doc, html);
+        // URL 抓取的 HTML 没有页的概念，整体当"第 1 页"处理，page_start/page_end 自然为 1。
+        finalizeDocument(doc, List.of(html));
         return doc;
     }
 
@@ -123,18 +125,28 @@ public class DocumentServiceImpl implements DocumentService {
         return doc;
     }
 
-    private void finalizeDocument(KnowledgeDocument doc, String text) {
-        if (text == null) text = "";
-        doc.setContent(truncateForDb(text));
+    private void finalizeDocument(KnowledgeDocument doc, List<String> pages) {
+        if (pages == null) pages = List.of();
+        // knowledge_document.content 存全文（页间用 \n\n 分），便于后台搜查/预览
+        String joined = String.join("\n\n", pages);
+        doc.setContent(truncateForDb(joined));
 
-        List<String> pieces = textChunker.chunk(text);
+        // 页码感知切块：PDF 得到 pageStart/pageEnd=实际页号；其他格式 pageStart=pageEnd=1
+        List<com.reportai.hub.knowledge.service.TextChunker.PageAwareChunk> pieces =
+                textChunker.chunkByPage(pages);
         List<KnowledgeChunk> chunks = new ArrayList<>(pieces.size());
         for (int i = 0; i < pieces.size(); i++) {
+            var pc = pieces.get(i);
             KnowledgeChunk c = new KnowledgeChunk();
             c.setDocId(doc.getId());
             c.setKbId(doc.getKbId());
             c.setChunkIndex(i);
-            c.setContent(pieces.get(i));
+            c.setContent(pc.text());
+            // 只有一页（text/html、txt、md）时页码不具备展示价值，留 null 让前端不展示"第 1 页"。
+            if (pages.size() > 1) {
+                c.setPageStart(pc.pageStart());
+                c.setPageEnd(pc.pageEnd());
+            }
             chunks.add(c);
         }
         for (KnowledgeChunk c : chunks) {
@@ -146,8 +158,8 @@ public class DocumentServiceImpl implements DocumentService {
         documentMapper.updateById(doc);
         baseService.refreshCounters(doc.getKbId());
 
-        log.info("indexed doc {} ({} bytes) -> {} chunks", doc.getFilename(),
-                doc.getFileSize(), chunks.size());
+        log.info("indexed doc {} ({} bytes) -> {} chunks across {} pages",
+                doc.getFilename(), doc.getFileSize(), chunks.size(), pages.size());
     }
 
     /** knowledge_document.content 是 longtext，但为保险仍截到 8MB 以内。 */

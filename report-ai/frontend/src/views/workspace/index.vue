@@ -580,7 +580,11 @@
           >
             <div class="citation-head">
               <span class="citation-idx">[{{ c.index }}]</span>
+              <span class="citation-icon" :title="c.fileType">{{ fileIcon(c.fileType) }}</span>
               <span class="citation-file" :title="c.filename">{{ c.filename }}</span>
+              <el-tag v-if="pageLabel(c)" size="small" type="warning" effect="plain">
+                {{ pageLabel(c) }}
+              </el-tag>
               <el-tag size="small" effect="plain">#{{ c.chunkIndex }}</el-tag>
             </div>
             <div class="citation-body">{{ c.content }}</div>
@@ -644,9 +648,31 @@ interface ChunkHit {
   index: number
   id: number | string
   filename: string
+  /** 源文件 MIME（如 application/pdf / text/html）。前端用它决定图标。 */
+  fileType?: string
   chunkIndex: number
+  /** PDF 才有的起止页码（1-based）。非 PDF 为 null / 缺省。 */
+  pageStart?: number | null
+  pageEnd?: number | null
   content: string
   score: number
+}
+
+/** 根据 fileType 选溯源卡的 emoji 图标。 */
+function fileIcon(fileType?: string): string {
+  if (!fileType) return '📄'
+  if (fileType.includes('pdf')) return '📕'
+  if (fileType.includes('word') || fileType.includes('officedocument.wordprocessingml')) return '📘'
+  if (fileType.includes('html')) return '🌐'
+  if (fileType.includes('markdown') || fileType.includes('text/plain')) return '📝'
+  return '📄'
+}
+
+/** 把 page_start/page_end 渲染成"第 3 页"/"第 3-5 页"/空字符串。 */
+function pageLabel(c: ChunkHit): string {
+  if (c.pageStart == null) return ''
+  if (c.pageEnd == null || c.pageEnd === c.pageStart) return `第 ${c.pageStart} 页`
+  return `第 ${c.pageStart}-${c.pageEnd} 页`
 }
 
 const userStore = useUserStore()
@@ -1700,6 +1726,11 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   color: #6366f1;
   font-weight: 700;
   font-size: 14px;
+}
+.citation-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 .citation-file {
   flex: 1;

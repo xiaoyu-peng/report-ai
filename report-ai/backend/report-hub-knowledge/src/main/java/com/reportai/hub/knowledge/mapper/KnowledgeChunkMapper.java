@@ -25,6 +25,8 @@ public interface KnowledgeChunkMapper extends BaseMapper<KnowledgeChunk> {
                c.kb_id       AS kbId,
                c.chunk_index AS chunkIndex,
                c.content     AS content,
+               c.page_start  AS pageStart,
+               c.page_end    AS pageEnd,
                d.filename    AS filename,
                d.file_type   AS fileType,
                MATCH(c.content) AGAINST(#{q} IN BOOLEAN MODE) AS score

@@ -12,6 +12,9 @@ public class RagChunkHit {
     private String content;
     private String filename;
     private String fileType;
+    /** PDF 源的起止页码（1-based）；非 PDF 为 null。 */
+    private Integer pageStart;
+    private Integer pageEnd;
     /** MySQL FULLTEXT 返回的相关度；越大越相关。 */
     private Double score;
 }
