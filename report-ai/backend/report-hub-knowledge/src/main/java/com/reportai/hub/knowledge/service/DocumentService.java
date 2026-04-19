@@ -19,4 +19,10 @@ public interface DocumentService {
      * 赛题模块 1.3 明确要求"知识库内容增删改查"的"改"能力。
      */
     KnowledgeDocument update(Long docId, String filename, String content, Long operatorId);
+
+    /**
+     * 重新分块（schema 升级带新字段如 paragraph_index 后用）。
+     * 删旧 chunk → 用最新 chunker 重切 → 全新写入；不重新抓取文件。
+     */
+    KnowledgeDocument reembed(Long docId);
 }

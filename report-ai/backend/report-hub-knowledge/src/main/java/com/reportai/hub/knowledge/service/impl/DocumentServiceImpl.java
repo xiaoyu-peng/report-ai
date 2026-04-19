@@ -136,6 +136,7 @@ public class DocumentServiceImpl implements DocumentService {
                 c.setKbId(doc.getKbId());
                 c.setChunkIndex(i);
                 c.setContent(pc.text());
+                c.setParagraphIndex(pc.paragraphIndex());
                 chunkMapper.insert(c);
             }
             doc.setChunkCount(pieces.size());
@@ -146,6 +147,41 @@ public class DocumentServiceImpl implements DocumentService {
         if (contentChanged) baseService.refreshCounters(doc.getKbId());
         log.info("doc {} updated by {} (rename={}, rewrite={})",
                 docId, operatorId, filename != null, contentChanged);
+        return doc;
+    }
+
+    @Override
+    @Transactional
+    public KnowledgeDocument reembed(Long docId) {
+        KnowledgeDocument doc = documentMapper.selectById(docId);
+        if (doc == null) throw new BusinessException("文档不存在：id=" + docId);
+
+        chunkMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KnowledgeChunk>()
+                .eq("doc_id", docId));
+
+        // 重新分块用 knowledge_document.content（已是 finalize 时存好的全文）。
+        // 注意：失去原始页边界，所以页码统一按"单页"处理；段落序号能完整重建。
+        String content = doc.getContent() == null ? "" : doc.getContent();
+        List<com.reportai.hub.knowledge.service.TextChunker.PageAwareChunk> pieces =
+                textChunker.chunkByPage(List.of(content));
+        for (int i = 0; i < pieces.size(); i++) {
+            var pc = pieces.get(i);
+            KnowledgeChunk c = new KnowledgeChunk();
+            c.setDocId(docId);
+            c.setKbId(doc.getKbId());
+            c.setChunkIndex(i);
+            c.setContent(pc.text());
+            c.setParagraphIndex(pc.paragraphIndex());
+            // reembed 没有原始页号信息，PDF 也保留原 page_start 不准确，所以 null
+            chunkMapper.insert(c);
+        }
+
+        doc.setChunkCount(pieces.size());
+        doc.setStatus("success");
+        documentMapper.updateById(doc);
+        baseService.refreshCounters(doc.getKbId());
+
+        log.info("reembedded doc {} -> {} chunks (with paragraph_index)", docId, pieces.size());
         return doc;
     }
 
@@ -187,6 +223,7 @@ public class DocumentServiceImpl implements DocumentService {
                 c.setPageStart(pc.pageStart());
                 c.setPageEnd(pc.pageEnd());
             }
+            c.setParagraphIndex(pc.paragraphIndex());
             chunks.add(c);
         }
         for (KnowledgeChunk c : chunks) {

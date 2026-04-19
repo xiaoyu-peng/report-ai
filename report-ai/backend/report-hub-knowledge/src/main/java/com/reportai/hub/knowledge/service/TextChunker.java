@@ -84,8 +84,12 @@ public class TextChunker {
         return out;
     }
 
-    /** 页码感知分块的返回体。pageStart/pageEnd 1-based，跨页时记全范围。 */
-    public record PageAwareChunk(String text, int pageStart, int pageEnd) {}
+    /**
+     * 页码感知分块的返回体。
+     * pageStart/pageEnd 1-based，跨页时记全范围；paragraphIndex 是该 chunk 起始段落
+     * 在原文中的全局序号（0-based，跨页累计），用于"引用溯源到段落"。
+     */
+    public record PageAwareChunk(String text, int pageStart, int pageEnd, int paragraphIndex) {}
 
     /**
      * 页码感知切块：输入是"每页正文"的列表（1-based 语义），输出每个 chunk 带起止页码。
@@ -105,54 +109,63 @@ public class TextChunker {
         List<PageAwareChunk> out = new ArrayList<>();
         if (pages == null || pages.isEmpty()) return out;
 
-        // 展平成 (paragraph, pageNo) 序列
-        record ParaWithPage(String text, int page) {}
+        // 展平成 (paragraph, pageNo, paraIndex) 序列；paraIndex 跨页全局递增
+        record ParaWithPage(String text, int page, int paraIndex) {}
         List<ParaWithPage> paras = new ArrayList<>();
+        int globalParaIdx = 0;
         for (int i = 0; i < pages.size(); i++) {
             String normalized = pages.get(i) == null ? "" :
                     pages.get(i).replace("\r\n", "\n").replaceAll("\n{3,}", "\n\n");
             for (String p : normalized.split("\n\n")) {
                 String t = p.trim();
-                if (!t.isEmpty()) paras.add(new ParaWithPage(t, i + 1));
+                if (!t.isEmpty()) {
+                    paras.add(new ParaWithPage(t, i + 1, globalParaIdx));
+                    globalParaIdx++;
+                }
             }
         }
 
         StringBuilder buf = new StringBuilder();
-        int bufStart = -1, bufEnd = -1;
+        int bufStart = -1, bufEnd = -1, bufStartPara = -1, lastPara = -1;
 
         for (ParaWithPage pw : paras) {
             String p = pw.text();
             int page = pw.page();
+            int paraIdx = pw.paraIndex();
 
             if (p.length() > maxChars) {
                 if (buf.length() > 0) {
-                    out.add(new PageAwareChunk(buf.toString(), bufStart, bufEnd));
+                    out.add(new PageAwareChunk(buf.toString(), bufStart, bufEnd, bufStartPara));
                     buf.setLength(0);
-                    bufStart = bufEnd = -1;
+                    bufStart = bufEnd = bufStartPara = -1;
                 }
-                // 超长段落本身落在单页内（PDF 段落通常不会跨页被抽出），同页拆多块
+                // 超长段落本身落在单页内，同页拆多块；都用同一个 paraIdx
                 for (String piece : splitLong(p, maxChars, overlap)) {
-                    out.add(new PageAwareChunk(piece, page, page));
+                    out.add(new PageAwareChunk(piece, page, page, paraIdx));
                 }
+                lastPara = paraIdx;
                 continue;
             }
 
             if (buf.length() + p.length() + 1 > maxChars) {
-                out.add(new PageAwareChunk(buf.toString(), bufStart, bufEnd));
+                out.add(new PageAwareChunk(buf.toString(), bufStart, bufEnd, bufStartPara));
                 String tail = buf.length() > overlap
                         ? buf.substring(buf.length() - overlap)
                         : buf.toString();
                 buf.setLength(0);
                 buf.append(tail);
-                // overlap 带进下一个 chunk 时，pageStart 沿用上个 chunk 的 bufEnd（它就来自上一段）
+                // overlap 带进下一个 chunk 时，承接上一个 chunk 末尾的页/段
                 bufStart = bufEnd;
+                bufStartPara = lastPara;
             }
             if (buf.length() > 0) buf.append('\n');
             buf.append(p);
             if (bufStart < 0) bufStart = page;
+            if (bufStartPara < 0) bufStartPara = paraIdx;
             bufEnd = page;
+            lastPara = paraIdx;
         }
-        if (buf.length() > 0) out.add(new PageAwareChunk(buf.toString(), bufStart, bufEnd));
+        if (buf.length() > 0) out.add(new PageAwareChunk(buf.toString(), bufStart, bufEnd, bufStartPara));
         return out;
     }
 }

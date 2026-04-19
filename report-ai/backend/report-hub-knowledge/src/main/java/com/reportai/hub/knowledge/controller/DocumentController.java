@@ -80,6 +80,12 @@ public class DocumentController {
         return Result.success();
     }
 
+    @Operation(summary = "重新分块（schema 升级补 paragraph_index 等新字段后用）")
+    @PostMapping("/documents/{id}/reembed")
+    public Result<KnowledgeDocument> reembed(@PathVariable Long id) {
+        return Result.success(documentService.reembed(id));
+    }
+
     @lombok.Data
     public static class DocumentUpdateDTO {
         /** 可选，非空则 rename。 */
