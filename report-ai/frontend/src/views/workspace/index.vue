@@ -1113,10 +1113,15 @@ async function handleGenerate() {
 
   try {
     // 1. Create draft report first to get an ID
+    // 后端 ReportCreateDTO.keyPoints 是 List<String>；按行切 + trim + 去空；空则不发字段（Jackson 不会把空串硬塞成 List）
+    const kpArr = (form.value.keyPoints || '')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
     const createRes = await createReport({
       title: form.value.title.trim(),
       topic: form.value.topic.trim(),
-      keyPoints: form.value.keyPoints,
+      ...(kpArr.length ? { keyPoints: kpArr } : {}),
       kbId: form.value.kbId,
       templateId: form.value.templateId,
       // 赛题 2.3：把用户手填的补充/排除关键词一起下沉到后端 BOOLEAN query

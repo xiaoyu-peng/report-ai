@@ -41,7 +41,8 @@ export interface ReportVersion {
 export interface CreateReportParams {
   title: string
   topic?: string
-  keyPoints?: string
+  /** 后端 DTO 是 List<String>；前端按行切；为空时请直接省略字段而不是传空串/空数组 */
+  keyPoints?: string[]
   kbId?: number | null
   templateId?: number | null
   /** 赛题 2.3：手动补充的检索关键词，多个词用空格/逗号分隔 */
