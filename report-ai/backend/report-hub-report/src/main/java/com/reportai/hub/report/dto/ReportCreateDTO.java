@@ -1,7 +1,6 @@
 package com.reportai.hub.report.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
@@ -12,7 +11,7 @@ public class ReportCreateDTO {
     private String title;
     @NotBlank
     private String topic;
-    @NotNull
+    /** 可空 —— 未选知识库时 RAG 跳过，依赖模板风格 + MCP / Tavily 自动拉取兜底。 */
     private Long kbId;
     private Long templateId;
     private List<String> keyPoints;
