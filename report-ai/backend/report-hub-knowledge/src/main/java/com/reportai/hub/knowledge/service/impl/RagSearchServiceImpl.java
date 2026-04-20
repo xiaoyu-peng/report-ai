@@ -109,42 +109,23 @@ public class RagSearchServiceImpl implements RagSearchService {
 
     /**
      * 把自然语言 query 转成 MySQL FULLTEXT BOOLEAN MODE 可识别的表达式。
-     * 做法：
-     *  1. 去掉保留字符；
-     *  2. 按空白分词；
-     *  3. 每个词加 "+" 前缀表示 "必须包含"，并在两端加 "*" 允许前缀匹配；
-     *  4. 中文逐字空格分隔（MySQL FULLTEXT 对 CJK 的默认分词极差，
-     *     已通过 innodb-ft-min-token-size=1 启用单字索引）。
+     *
+     * 历史做法是把中文逐字拆成 `+五 +一 +出 +行 +政 +策`，依赖单字索引 AND 到底。
+     * 结果：6 个字全都要出现才命中 → 长 topic 召回率接近 0。
+     *
+     * 现在索引已用 `WITH PARSER ngram`（ngram_token_size=2），FULLTEXT 内部
+     * 会把 "五一出行政策" 切成 五一/一出/出行/行政/政策 5 个 bigram。我们只需：
+     *  1. 干掉 BOOLEAN 保留字符；
+     *  2. 按空白再分一层词；
+     *  3. 不加 "+" 前缀 —— BOOLEAN MODE 下未加前缀的词贡献 relevance 但不强制，
+     *     等价于对 ngram 集合做"模糊匹配+打分"，长短 topic 都能打到；
+     *  4. `-` 前缀（来自 exclude 关键词）保留原样，负权过滤。
      */
     private String toBooleanModeExpression(String raw) {
         String cleaned = BOOLEAN_RESERVED.matcher(raw).replaceAll(" ");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < cleaned.length(); i++) {
-            char ch = cleaned.charAt(i);
-            if (ch == '-' && i + 1 < cleaned.length() && !Character.isWhitespace(cleaned.charAt(i + 1))) {
-                sb.append(' ').append('-');
-            } else if (isCjk(ch)) {
-                sb.append(' ').append(ch).append(' ');
-            } else {
-                sb.append(ch);
-            }
-        }
-        String split = sb.toString();
-        return Arrays.stream(split.split("\\s+"))
+        return Arrays.stream(cleaned.split("\\s+"))
                 .filter(s -> !s.isBlank())
-                .map(s -> {
-                    if (s.startsWith("-")) return s;
-                    return "+" + s;
-                })
                 .collect(Collectors.joining(" "));
-    }
-
-    private boolean isCjk(char ch) {
-        Character.UnicodeBlock b = Character.UnicodeBlock.of(ch);
-        return b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
-                || b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
-                || b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
-                || b == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
     }
 
     // ==================== T5 增强检索 ====================

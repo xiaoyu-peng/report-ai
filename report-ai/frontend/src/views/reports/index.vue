@@ -110,7 +110,7 @@ interface ReportRow {
 const router = useRouter()
 const list = ref<ReportRow[]>([])
 const loading = ref(false)
-const viewMode = ref<'card' | 'table'>('card')
+const viewMode = ref<'card' | 'table'>('table')
 
 onMounted(fetchList)
 
