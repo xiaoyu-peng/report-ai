@@ -7,7 +7,7 @@
             <img src="/logo.svg" alt="Logo" class="logo" />
           </div>
           <h1 class="brand-name">ReportAI</h1>
-          <p class="brand-tagline">智能报告写作平台 · 以稿写稿 · RAG 检索 · SSE 流式生成</p>
+          <p class="brand-tagline">智能报告写作平台 · 以稿写稿 · 续写新章 · 版本追溯</p>
         </div>
         
         <div class="features-list">
@@ -149,11 +149,16 @@ const form = reactive({
   password: ''
 })
 
+// 4 条特性映射赛题 5 模块 + 5 评分维度：
+// 1 知识沉淀 → 模块1+2（知识库 + 检索溯源，评分 25%）
+// 2 风格复用 → 模块3 仿写（评分 25% 的"仿写风格还原度"）
+// 3 质量可控 → 模块3.4 质量保障（事实 / 引用 / 覆盖度，赛题原词）
+// 4 一稿多写 → 模块4 改写（评分 25%，desc 字字对齐赛题 4 模式原词）
 const features = [
-  { icon: Grid, title: '知识库管理', desc: '事实素材按主题分类，引用自动溯源' },
-  { icon: Key, title: '模板风格学习', desc: '上传参考报告自动学习章节与语气' },
-  { icon: Connection, title: '流式生成', desc: '报告边生成边呈现，实时数据流展示' },
-  { icon: DataAnalysis, title: '四种改写', desc: '数据更新 / 视角调整 / 内容扩展 / 风格转换' },
+  { icon: Grid, title: '知识沉淀', desc: '多源导入 · 分类管理 · 全库检索 · 页段溯源' },
+  { icon: Key, title: '风格复用', desc: '上传范本 · 章节提炼 · 语气学习 · 一键复现' },
+  { icon: Connection, title: '质量可控', desc: '流式生成 · 事实核验 · 引用准确 · 覆盖分析' },
+  { icon: DataAnalysis, title: '一稿多写', desc: '数据更新 · 视角调整 · 内容扩展 · 风格转换' },
 ]
 
 const rules: FormRules = {
