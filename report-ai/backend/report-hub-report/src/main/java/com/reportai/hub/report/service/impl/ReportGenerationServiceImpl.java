@@ -7,6 +7,7 @@ import com.reportai.hub.common.exception.BusinessException;
 import com.reportai.hub.knowledge.dto.RagChunkHit;
 import com.reportai.hub.knowledge.mcp.SassMcpService;
 import com.reportai.hub.knowledge.mcp.SearchMcpService;
+import com.reportai.hub.knowledge.mcp.TavilyClient;
 import com.reportai.hub.knowledge.service.RagSearchService;
 import com.reportai.hub.report.dto.ReportCreateDTO;
 import com.reportai.hub.report.entity.Report;
@@ -63,6 +64,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     private final LlmClient llmClient;
     private final SassMcpService sassMcpService;
     private final SearchMcpService searchMcpService;
+    private final TavilyClient tavilyClient;
     private final CitationParser citationParser;
     private final QualityMetricsService qualityMetricsService;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -294,8 +296,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         String topic = report.getTopic();
         if (topic == null || topic.isBlank()) return McpResult.empty();
 
-        String templateName = getTemplateName(report);
-        if (templateName == null) return McpResult.empty();
+        // 路由优先级：模板名 → 主题关键词 → 通用兜底。
+        // 以前的版本要求必须有模板名，导致"用户不选模板就彻底不拉 MCP"——这条路径砍掉。
+        String route = classifyRoute(getTemplateName(report), topic);
 
         String endDate = LocalDate.now().toString();
         String startDate = LocalDate.now().minusDays(30).toString();
@@ -304,28 +307,84 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         java.util.List<String> used = new java.util.ArrayList<>();
 
         try {
-            if (templateName.contains("传播") || templateName.contains("舆情")) {
-                appendMcpResult(mcpData, used, "舆情概览", sassMcpService.overview(topic, startDate, endDate));
-                appendMcpResult(mcpData, used, "热门文章", sassMcpService.hotArticle(topic, startDate, endDate, 5));
-                appendMcpResult(mcpData, used, "情感分布", sassMcpService.emotionalDistribution(topic, startDate, endDate));
-                appendMcpResult(mcpData, used, "渠道声量", sassMcpService.datasourceSound(topic, startDate, endDate));
-                appendMcpResult(mcpData, used, "事件阶段演化", sassMcpService.stageEnvolution(topic, startDate, endDate));
-                appendMcpResult(mcpData, used, "事件概述", sassMcpService.generateEventTopicInfo(topic, startDate, endDate));
-            } else if (templateName.contains("政策")) {
-                appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
-                appendMcpResult(mcpData, used, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
-            } else if (templateName.contains("行业")) {
-                appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
-                appendMcpResult(mcpData, used, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
-            } else {
-                appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
+            switch (route) {
+                case "propagation" -> {
+                    // 传播/舆情类：晴天 sass 全家桶（6 个工具）
+                    appendMcpResult(mcpData, used, "舆情概览", sassMcpService.overview(topic, startDate, endDate));
+                    appendMcpResult(mcpData, used, "热门文章", sassMcpService.hotArticle(topic, startDate, endDate, 5));
+                    appendMcpResult(mcpData, used, "情感分布", sassMcpService.emotionalDistribution(topic, startDate, endDate));
+                    appendMcpResult(mcpData, used, "渠道声量", sassMcpService.datasourceSound(topic, startDate, endDate));
+                    appendMcpResult(mcpData, used, "事件阶段演化", sassMcpService.stageEnvolution(topic, startDate, endDate));
+                    appendMcpResult(mcpData, used, "事件概述", sassMcpService.generateEventTopicInfo(topic, startDate, endDate));
+                }
+                case "policy", "industry" -> {
+                    // 政策 / 行业：晴天 search + 热词 + Tavily 补 web 权威源
+                    appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
+                    appendMcpResult(mcpData, used, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
+                    appendTavilyResult(mcpData, used, topic, 5);
+                }
+                case "tech" -> {
+                    // 科技/技术：技术类主题以 web 搜索为主（晴天舆情语料不丰富），搭一点搜索 mcp
+                    appendTavilyResult(mcpData, used, topic, 8);
+                    appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
+                }
+                default -> {
+                    // 通用兜底：search mcp（中文搜索更强）+ Tavily web（英文/通用主题更强）
+                    appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
+                    appendTavilyResult(mcpData, used, topic, 5);
+                }
             }
         } catch (Exception e) {
-            log.warn("MCP data fetch failed for topic '{}': {}", topic, e.getMessage());
+            log.warn("MCP data fetch failed for topic '{}' (route={}): {}", topic, route, e.getMessage());
         }
 
         String text = mcpData.length() > 0 ? mcpData.toString() : null;
         return new McpResult(text, used);
+    }
+
+    /**
+     * 路由决策：模板名优先（用户显式选的意图最强），否则按 topic 关键词匹配，再不行走通用兜底。
+     * 判断用包含匹配（模板名/主题都是短串），简单够用。
+     */
+    private String classifyRoute(String templateName, String topic) {
+        String s = ((templateName == null ? "" : templateName) + " " + topic).toLowerCase();
+        if (containsAny(s, "传播", "舆情", "品牌", "声量", "public opinion"))         return "propagation";
+        if (containsAny(s, "政策", "法规", "条例", "办法", "通知", "policy"))             return "policy";
+        if (containsAny(s, "行业", "产业", "市场", "赛道", "market", "industry"))        return "industry";
+        if (containsAny(s, "科技", "技术", "ai", "模型", "算法", "tech", "technology")) return "tech";
+        return "general";
+    }
+
+    private static boolean containsAny(String s, String... needles) {
+        for (String n : needles) if (s.contains(n)) return true;
+        return false;
+    }
+
+    /** Tavily 搜索结果拼成 prompt 文本。只取 title/url/content 前 200 字，防止撑爆 context。 */
+    private void appendTavilyResult(StringBuilder mcpData, java.util.List<String> used, String topic, int maxResults) {
+        try {
+            JsonNode r = tavilyClient.search(topic, maxResults);
+            if (r == null || r.isNull()) return;
+            StringBuilder block = new StringBuilder();
+            JsonNode results = r.path("results");
+            if (!results.isArray() || results.isEmpty()) return;
+            block.append("Tavily Web 搜索结果：\n");
+            for (int i = 0; i < results.size() && i < maxResults; i++) {
+                JsonNode it = results.get(i);
+                String title = it.path("title").asText("");
+                String url   = it.path("url").asText("");
+                String snip  = it.path("content").asText("");
+                if (snip.length() > 200) snip = snip.substring(0, 200) + "…";
+                block.append("- [").append(title).append("](").append(url).append(")\n  ")
+                     .append(snip).append("\n");
+            }
+            String ans = r.path("answer").asText("");
+            if (!ans.isBlank()) block.append("\nTavily 概览：").append(ans).append("\n");
+            mcpData.append("\n### Tavily Web 搜索\n").append(block).append("\n");
+            used.add("Tavily Web 搜索");
+        } catch (Exception e) {
+            log.warn("Tavily enrichment skipped: {}", e.getMessage());
+        }
     }
 
     /**

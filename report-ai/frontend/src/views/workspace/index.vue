@@ -114,40 +114,14 @@
           </el-form-item>
 
           <el-form-item label="外部数据">
-            <div class="external-data-btns">
-              <el-button
-                size="small"
-                type="success"
-                plain
-                :disabled="generating"
-                @click="showMcpDialog = true"
-              >
-                <el-icon><Connection /></el-icon>
-                晴天舆情
-              </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                plain
-                :disabled="generating"
-                @click="showWebSearchDialog = true"
-              >
-                <el-icon><Search /></el-icon>
-                Web 搜索
-              </el-button>
-              <el-button
-                size="small"
-                type="warning"
-                plain
-                :disabled="generating"
-                @click="showFetchDialog = true"
-              >
-                <el-icon><Link /></el-icon>
-                URL 抓取
-              </el-button>
-            </div>
-            <div v-if="mcpArticles.length > 0 || webSearchResults.length > 0" class="mcp-imported-hint">
-              已引入 {{ mcpArticles.length }} 篇舆情 + {{ webSearchResults.length }} 条 Web 数据
+            <div class="auto-mcp-hint">
+              <el-icon class="auto-mcp-hint__icon"><Connection /></el-icon>
+              <div>
+                <div class="auto-mcp-hint__title">AI 将根据主题自动拉取</div>
+                <div class="auto-mcp-hint__body">
+                  传播/舆情 → 晴天 sass 全家桶 · 政策/行业 → 搜索 MCP + Tavily 权威源 · 通用 → 搜索 MCP + Tavily 兜底
+                </div>
+              </div>
             </div>
           </el-form-item>
 
@@ -779,8 +753,6 @@ import {
   Download,
   Connection,
   Check,
-  Search,
-  Link,
   InfoFilled,
   ChatDotRound,
   Switch,
@@ -2199,19 +2171,29 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   white-space: nowrap;
 }
 
-/* MCP 引入相关 */
-.mcp-imported-hint {
-  font-size: 12px;
-  color: #10b981;
-  margin-top: 4px;
-}
-.external-data-btns {
+/* 外部数据自动化提示 —— 取代旧的 3 个手动按钮 */
+.auto-mcp-hint {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed #a7f3d0;
+  background: #f0fdf4;
+  border-radius: 6px;
+  line-height: 1.5;
 }
-.external-data-btns .el-button {
-  flex: 1;
+.auto-mcp-hint__icon {
+  color: #10b981;
+  font-size: 18px;
+  margin-top: 2px;
+}
+.auto-mcp-hint__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #065f46;
+}
+.auto-mcp-hint__body {
+  font-size: 12px;
+  color: #047857;
 }
 .template-option {
   display: flex;
