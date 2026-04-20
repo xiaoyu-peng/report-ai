@@ -57,7 +57,7 @@
               </div>
             </div>
           </el-tab-pane>
-          <el-tab-pane label="智能编辑（Tiptap）" name="tiptap">
+          <el-tab-pane label="智能编辑" name="tiptap">
             <div v-if="report" class="tiptap-tab">
               <el-alert
                 title="选中任意段落 → 顶部浮起 ✨ 优化 / ➕ 扩展 / ✂️ 精简 三个按钮，AI 现场改写"
@@ -91,7 +91,9 @@
                   ref="sectionStreamRef"
                   :report-id="report.id"
                   :kb-ids="report.kbId ? [report.kbId] : []"
+                  :initial-content="report.content || ''"
                   @assembled="onSectionsAssembled"
+                  @imported="onSectionsImported"
                 />
               </el-card>
             </div>
@@ -337,64 +339,115 @@
       </div>
 
       <div class="version-sidebar">
-        <h3 class="sidebar-title">版本历史</h3>
-        <div v-loading="versionsLoading" class="version-list">
-          <div
-            v-for="v in versions"
-            :key="v.id"
-            class="version-item"
-            :class="{ active: selectedVersionId === v.id }"
-            @click="selectVersion(v)"
-          >
-            <div class="version-dot"></div>
-            <div class="version-info">
-              <div class="version-name">v{{ v.versionNum }}</div>
-              <div class="version-meta">
-                <el-tag size="small" effect="plain" :type="modeTagType(v.sourceMode)">
-                  {{ modeLabel(v.sourceMode) }}
-                </el-tag>
-                <span class="version-words">{{ v.wordCount ?? 0 }} 字</span>
-              </div>
-              <div class="version-time">{{ formatTime(v.createdAt) }}</div>
-              <div v-if="v.changeSummary" class="version-summary">{{ v.changeSummary }}</div>
-              <div class="version-actions">
-                <el-button
-                  v-if="v.versionNum !== latestVersionNum"
-                  size="small"
-                  type="primary"
-                  link
-                  @click.stop="handleRestore(v)"
-                >
-                  <el-icon><RefreshLeft /></el-icon>
-                  回滚
-                </el-button>
+        <el-tabs v-model="sidebarTab" class="sidebar-tabs">
+          <el-tab-pane name="citations">
+            <template #label>
+              <span class="tab-label">
+                <el-icon><Collection /></el-icon>
+                引用溯源
+                <el-tag v-if="citations.length" size="small" type="info" effect="light">{{ citations.length }}</el-tag>
+              </span>
+            </template>
+            <div v-if="citationsLoading" class="sidebar-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="!citations.length" class="sidebar-empty">
+              <el-empty description="暂无引用溯源" :image-size="60" />
+            </div>
+            <div v-else class="citations-list">
+              <div
+                v-for="c in citations"
+                :key="c.id"
+                :id="`cite-card-${c.citationMarker}`"
+                class="citation-card"
+                :class="{ highlighted: highlightedCite === c.citationMarker }"
+              >
+                <div class="citation-head">
+                  <span class="citation-idx">[{{ c.citationMarker }}]</span>
+                  <span class="citation-file">{{ c.docTitle || '未命名来源' }}</span>
+                  <el-tag v-if="c.pageStart" size="small" type="warning" effect="plain">
+                    第 {{ c.pageStart }}-{{ c.pageEnd }} 页
+                  </el-tag>
+                </div>
+                <div class="citation-body">{{ c.snippet || '（无原文片段）' }}</div>
+                <div class="citation-foot">
+                  <el-button size="small" text type="primary" @click="goToSource(c)">
+                    <el-icon><Document /></el-icon>
+                    查看原文
+                  </el-button>
+                </div>
               </div>
             </div>
-          </div>
-          <el-empty v-if="!versionsLoading && versions.length === 0" description="暂无版本" :image-size="60" />
-        </div>
+          </el-tab-pane>
+          <el-tab-pane name="versions">
+            <template #label>
+              <span class="tab-label">
+                <el-icon><Clock /></el-icon>
+                版本历史
+              </span>
+            </template>
+            <div v-loading="versionsLoading" class="version-list">
+              <div
+                v-for="v in versions"
+                :key="v.id"
+                class="version-item"
+                :class="{ active: selectedVersionId === v.id }"
+                @click="selectVersion(v)"
+              >
+                <div class="version-dot"></div>
+                <div class="version-info">
+                  <div class="version-name">v{{ v.versionNum }}</div>
+                  <div class="version-meta">
+                    <el-tag size="small" effect="plain" :type="modeTagType(v.sourceMode)">
+                      {{ modeLabel(v.sourceMode) }}
+                    </el-tag>
+                    <span class="version-words">{{ v.wordCount ?? 0 }} 字</span>
+                  </div>
+                  <div class="version-time">{{ formatTime(v.createdAt) }}</div>
+                  <div v-if="v.changeSummary" class="version-summary">{{ v.changeSummary }}</div>
+                  <div class="version-actions">
+                    <el-button
+                      v-if="v.versionNum !== latestVersionNum"
+                      size="small"
+                      type="primary"
+                      link
+                      @click.stop="handleRestore(v)"
+                    >
+                      <el-icon><RefreshLeft /></el-icon>
+                      回滚
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+              <el-empty v-if="!versionsLoading && versions.length === 0" description="暂无版本" :image-size="60" />
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </div>
+    <CitationPopover ref="citationPopoverRef" :report-id="reportId" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit, MagicStick, Warning, VideoPlay } from '@element-plus/icons-vue'
+import { ArrowLeft, EditPen, Download, List, Check, Close, RefreshLeft, Plus, Minus, Edit, MagicStick, Warning, VideoPlay, Collection, Document, Clock, Loading } from '@element-plus/icons-vue'
 import { getReport, getReportVersions, getVersionDiffByNum, restoreVersion, exportDocx, checkReportQuality, type Report, type ReportVersion, type QualityReport } from '@/api/report'
 import { renderReportMarkdown } from '@/utils/markdown'
 import TiptapEditor from '@/components/editor/TiptapEditor.vue'
+import CitationPopover from '@/components/editor/CitationPopover.vue'
 import OutlineEditor from '@/components/outline/OutlineEditor.vue'
 import SectionStreamView from '@/components/outline/SectionStreamView.vue'
 import CoverageDashboard from '@/components/quality/CoverageDashboard.vue'
 import { initSections, OutlineItem as ChapterOutlineItem } from '@/api/section'
+import { listCitations, type ReportCitation } from '@/api/citation'
 import * as Diff from 'diff'
 import ReportCharts from '@/components/ReportCharts.vue'
 
 const route = useRoute()
-const router = useRouter()
 const reportId = Number(route.params.id)
 
 const report = ref<Report | null>(null)
@@ -402,6 +455,7 @@ const versions = ref<ReportVersion[]>([])
 const versionsLoading = ref(false)
 const selectedVersionId = ref<number | null>(null)
 const activeTab = ref('content')
+const sidebarTab = ref('citations')
 
 const diffFrom = ref<number | null>(null)
 const diffTo = ref<number | null>(null)
@@ -410,6 +464,10 @@ const diffResult = ref<{ oldLines: DiffLine[]; newLines: DiffLine[] } | null>(nu
 const diffViewMode = ref<'split' | 'revision'>('split')
 
 const contentEl = ref<HTMLDivElement | null>(null)
+const citationPopoverRef = ref<InstanceType<typeof CitationPopover> | null>(null)
+const citations = ref<ReportCitation[]>([])
+const citationsLoading = ref(false)
+const highlightedCite = ref<number | null>(null)
 
 // 'placeholder' 用于左右两栏对齐（当一侧是 INSERT/DELETE 时，另一侧占位空行）
 interface DiffLine {
@@ -474,12 +532,16 @@ function suggestionLabel(s?: string): string {
 }
 
 onMounted(async () => {
-  await Promise.all([loadReport(), loadVersions()])
+  await Promise.all([loadReport(), loadVersions(), loadCitations()])
   if (versions.value.length >= 2) {
     diffFrom.value = versions.value[versions.value.length - 2].versionNum
     diffTo.value = versions.value[versions.value.length - 1].versionNum
   }
   nextTick(() => buildOutline())
+  // 章节流式 tab 的 OutlineEditor 从原报告正文预填章节，避免"空大纲起手→生成→覆盖原文"
+  if (outlineDraft.value.length === 0 && report.value?.content) {
+    outlineDraft.value = parseOutlineFromMarkdown(report.value.content)
+  }
 })
 
 async function loadReport() {
@@ -504,6 +566,18 @@ async function loadVersions() {
     console.error('加载版本列表失败:', e)
   } finally {
     versionsLoading.value = false
+  }
+}
+
+async function loadCitations() {
+  citationsLoading.value = true
+  try {
+    const res = await listCitations(reportId)
+    citations.value = (res as any).data || []
+  } catch (e) {
+    console.error('加载引用列表失败:', e)
+  } finally {
+    citationsLoading.value = false
   }
 }
 
@@ -550,6 +624,36 @@ function onSectionsAssembled(content: string) {
     nextTick(() => buildOutline())
     ElMessage.success('已合成全文写入报告正文，可切到「报告正文」tab 查看')
   }
+}
+
+/**
+ * SectionStreamView 首次进入且 DB 无 section 时，会把原报告按标题切分并以 done 状态入库；
+ * 完成后通过 imported 事件通知。此处把大纲回填到 OutlineEditor，让用户看到当前章节结构，
+ * 方便在此基础上新增章节而不是从零开始（曾出现"只填网民观点一章→覆盖原文"的 bug）。
+ */
+function onSectionsImported(_count: number) {
+  if (!report.value?.content) return
+  const parsed = parseOutlineFromMarkdown(report.value.content)
+  if (parsed.length > 0 && outlineDraft.value.length === 0) {
+    outlineDraft.value = parsed
+  }
+}
+
+/**
+ * 与 SectionStreamView 内部的 parseReportToSections 同义的轻量版本：
+ * 只抽章节标题（不抽正文）给 OutlineEditor，让用户继续编辑大纲。
+ */
+function parseOutlineFromMarkdown(raw: string): ChapterOutlineItem[] {
+  if (!raw) return []
+  const lines = raw.split(/\r?\n/)
+  const headingRe = /^\s*(#{1,2}\s+.+|[一二三四五六七八九十百]+[、.．]\s*.+|\d{1,2}[、.．]\s*.+)\s*$/
+  const titles: string[] = []
+  for (const line of lines) {
+    if (headingRe.test(line)) {
+      titles.push(line.trim().replace(/^#{1,2}\s+/, '').trim())
+    }
+  }
+  return titles.map(t => ({ title: t, prompt: '' }))
 }
 
 async function handleRestore(v: ReportVersion) {
@@ -752,7 +856,23 @@ function handleCiteClick(e: MouseEvent) {
   const sup = target.closest('sup.cite') as HTMLElement | null
   if (sup) {
     const idx = sup.dataset.idx
-    if (idx) ElMessage.info(`引用来源 [${idx}]`)
+    if (idx) {
+      const marker = parseInt(idx, 10)
+      highlightedCite.value = marker
+      if (citationPopoverRef.value) {
+        citationPopoverRef.value.show(sup, marker)
+      }
+    }
+  }
+}
+
+function goToSource(c: ReportCitation) {
+  if (c.kbId && c.docId) {
+    window.open(`/knowledge/${c.kbId}?docId=${c.docId}`, '_blank')
+  } else if (c.kbId) {
+    window.open(`/knowledge/${c.kbId}`, '_blank')
+  } else {
+    ElMessage.warning('该引用缺少原文文档信息')
   }
 }
 
@@ -1241,8 +1361,107 @@ function formatTime(v?: string): string {
   background: #fff;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
-  padding: 20px;
+  padding: 12px;
   overflow-y: auto;
+}
+
+.sidebar-tabs {
+  height: 100%;
+}
+
+.sidebar-tabs :deep(.el-tabs__header) {
+  margin-bottom: 12px;
+}
+
+.sidebar-tabs :deep(.el-tabs__content) {
+  height: calc(100% - 50px);
+  overflow-y: auto;
+}
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  gap: 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.sidebar-empty {
+  padding: 20px 0;
+}
+
+.citations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.citation-card {
+  padding: 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.citation-card.highlighted {
+  background: #ede9fe;
+  border-color: #c7d2fe;
+}
+
+.citation-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.citation-idx {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: #ede9fe;
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.citation-file {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.citation-body {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.6;
+  max-height: 80px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: #fff;
+  border-radius: 4px;
+  border-left: 3px solid #6366f1;
+}
+
+.citation-foot {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .sidebar-title {

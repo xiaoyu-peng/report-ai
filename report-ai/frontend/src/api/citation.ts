@@ -9,6 +9,7 @@ export interface ReportCitation {
   citationMarker: number
   chunkId: number
   docId: number
+  kbId?: number | null
   docTitle?: string
   pageStart?: number | null
   pageEnd?: number | null

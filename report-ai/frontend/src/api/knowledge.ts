@@ -56,5 +56,15 @@ export const updateDocument = (docId: number, data: { filename?: string; content
   request.put(`/v1/knowledge/documents/${docId}`, data)
 
 export const searchKnowledge = (kbId: number, query: string, topK = 8) =>
-  // 后端路由：GET /api/v1/knowledge/search?kbId=&q=&topK=（query 参数是 q 不是 query）
   request.get(`/v1/knowledge/search`, { params: { kbId, q: query, topK } })
+
+export interface KnowledgeChunk {
+  id: number
+  docId: number
+  chunkIndex: number
+  content: string
+  createdAt?: string
+}
+
+export const getDocumentChunks = (docId: number) =>
+  request.get(`/v1/chunks/doc/${docId}`)

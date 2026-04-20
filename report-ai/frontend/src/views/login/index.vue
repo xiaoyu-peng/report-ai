@@ -150,10 +150,10 @@ const form = reactive({
 })
 
 const features = [
-  { icon: Grid, title: '知识库管理', desc: '多格式文档 Tika 解析 + RAG 检索' },
-  { icon: Key, title: '模板风格学习', desc: '上传样稿自动提炼写作风格' },
-  { icon: Connection, title: '流式生成', desc: 'Claude API + SSE 实时推送' },
-  { icon: DataAnalysis, title: '四种改写', desc: '润色 / 扩写 / 缩写 / 风格化' },
+  { icon: Grid, title: '知识库管理', desc: '事实素材按主题分类，引用自动溯源' },
+  { icon: Key, title: '模板风格学习', desc: '上传参考报告自动学习章节与语气' },
+  { icon: Connection, title: '流式生成', desc: '报告边生成边呈现，实时数据流展示' },
+  { icon: DataAnalysis, title: '四种改写', desc: '数据更新 / 视角调整 / 内容扩展 / 风格转换' },
 ]
 
 const rules: FormRules = {

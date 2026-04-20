@@ -171,10 +171,11 @@ public class ReportStreamController {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("index", i + 1);
                     m.put("id", h.getChunkId());
+                    m.put("kbId", h.getKbId());
+                    m.put("docId", h.getDocId());
                     m.put("filename", h.getFilename());
                     m.put("fileType", h.getFileType());
                     m.put("chunkIndex", h.getChunkIndex());
-                    // 赛题 2.2：页码/段落溯源。null 表示源不是 PDF，前端不展示页码。
                     m.put("pageStart", h.getPageStart());
                     m.put("pageEnd", h.getPageEnd());
                     m.put("content", truncate(h.getContent(), 400));

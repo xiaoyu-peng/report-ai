@@ -82,6 +82,7 @@ public class CitationParser {
                 row.setCitationMarker(marker);
                 row.setChunkId(hit.getChunkId());
                 row.setDocId(hit.getDocId());
+                row.setKbId(hit.getKbId());
                 row.setDocTitle(hit.getFilename());
                 row.setPageStart(hit.getPageStart());
                 row.setPageEnd(hit.getPageEnd());

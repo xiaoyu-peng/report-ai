@@ -34,12 +34,20 @@ instance.interceptors.response.use(
       return response.data
     }
     const { data } = response
+    // 约定 Result<T> 包装走 code===200 分支返回整包。
     if (data && data.code === 200) {
       return data
     }
-    const msg = data?.message || '请求失败'
-    ElMessage.error(msg)
-    return Promise.reject(new Error(msg))
+    // 有些后端端点（如 /mcp/analysis/*）直接返回 JsonNode/String 原始数据，
+    // 不走 Result 包装。这类响应 HTTP 200 但没有 code 字段，不应算作失败 ——
+    // 原来全打成"请求失败"就是 bug。以"是否声明了 code 字段"区分：有 code
+    // 但不是 200 才是业务失败；没 code 的 200 响应直接透传 data。
+    if (data && typeof data === 'object' && 'code' in data) {
+      const msg = data?.message || '请求失败'
+      ElMessage.error(msg)
+      return Promise.reject(new Error(msg))
+    }
+    return data
   },
   (error: AxiosError) => {
     if (error.response) {

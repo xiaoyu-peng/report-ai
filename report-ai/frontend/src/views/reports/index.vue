@@ -18,6 +18,10 @@
       </div>
     </div>
 
+    <p class="page-hint">
+      报告库沉淀所有<strong>已生成的成果</strong>——支持数据更新、视角调整、内容扩展、风格转换<strong>四种改写</strong>和续写新章节；打开详情可对比改写前后差异，一键导出 Word / PDF 交付。
+    </p>
+
     <div v-if="viewMode === 'card'" class="card-view" v-loading="loading">
       <el-row :gutter="16">
         <el-col v-for="r in list" :key="r.id" :xs="24" :sm="12" :md="8" :lg="6">
@@ -54,6 +58,8 @@
         stripe
         style="width: 100%"
         empty-text="暂无报告"
+        row-class-name="clickable-row"
+        @row-click="handleView"
       >
         <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
         <el-table-column prop="topic" label="主题" min-width="160" show-overflow-tooltip>
@@ -80,8 +86,8 @@
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" link @click="handleView(row)">查看</el-button>
-            <el-button size="small" type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button size="small" type="primary" link @click.stop="handleView(row)">查看</el-button>
+            <el-button size="small" type="danger" link @click.stop="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -207,9 +213,25 @@ async function handleDelete(row: ReportRow) {
   gap: 12px;
   align-items: center;
 }
+.page-hint {
+  color: #64748b;
+  font-size: 13px;
+  background: #f5f3ff;
+  border-left: 3px solid #6366f1;
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 0 0 16px 0;
+  line-height: 1.7;
+}
+.page-hint strong {
+  color: #4338ca;
+}
 .table-card {
   border-radius: 12px;
   border: 1px solid #e2e8f0;
+}
+.table-card :deep(.el-table__row.clickable-row) {
+  cursor: pointer;
 }
 
 .report-card {

@@ -2,11 +2,13 @@ package com.reportai.hub.knowledge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.reportai.hub.common.exception.BusinessException;
+import com.reportai.hub.knowledge.dto.EsChunkDocument;
 import com.reportai.hub.knowledge.entity.KnowledgeChunk;
 import com.reportai.hub.knowledge.entity.KnowledgeDocument;
 import com.reportai.hub.knowledge.mapper.KnowledgeChunkMapper;
 import com.reportai.hub.knowledge.mapper.KnowledgeDocumentMapper;
 import com.reportai.hub.knowledge.service.DocumentService;
+import com.reportai.hub.knowledge.service.EsChunkService;
 import com.reportai.hub.knowledge.service.KnowledgeBaseService;
 import com.reportai.hub.knowledge.service.TextChunker;
 import com.reportai.hub.knowledge.service.TikaParser;
@@ -36,11 +38,11 @@ public class DocumentServiceImpl implements DocumentService {
     private final TikaParser tikaParser;
     private final TextChunker textChunker;
     private final KnowledgeBaseService baseService;
+    private final EsChunkService esChunkService;
 
     @Value("${report-ai.knowledge.url-fetch-timeout-ms:10000}")
     private int urlFetchTimeoutMs;
 
-    /** 原文件 blob 保存上限：10 MB。超出者仅保留解析后的正文，查看弹窗走文本回退。 */
     private static final long MAX_BLOB_BYTES = 10L * 1024 * 1024;
 
     @Override
@@ -127,6 +129,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (doc == null) return;
         chunkMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KnowledgeChunk>()
                 .eq("doc_id", docId));
+        esChunkService.deleteByDocId(docId);
         documentMapper.deleteById(docId);
         baseService.refreshCounters(doc.getKbId());
     }
@@ -143,14 +146,14 @@ public class DocumentServiceImpl implements DocumentService {
 
         boolean contentChanged = content != null && !content.equals(doc.getContent());
         if (contentChanged) {
-            // 正文变了就重建 chunk：先清旧，再按新内容走一遍 chunker。
-            // 编辑路径进来的是纯文本（无页码概念），所以 pages 只放一段。
             chunkMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KnowledgeChunk>()
                     .eq("doc_id", docId));
+            esChunkService.deleteByDocId(docId);
             doc.setContent(truncateForDb(content));
             doc.setFileSize((long) content.getBytes(StandardCharsets.UTF_8).length);
             List<com.reportai.hub.knowledge.service.TextChunker.PageAwareChunk> pieces =
                     textChunker.chunkByPage(List.of(content));
+            List<EsChunkDocument> esDocs = new ArrayList<>();
             for (int i = 0; i < pieces.size(); i++) {
                 var pc = pieces.get(i);
                 KnowledgeChunk c = new KnowledgeChunk();
@@ -160,7 +163,9 @@ public class DocumentServiceImpl implements DocumentService {
                 c.setContent(pc.text());
                 c.setParagraphIndex(pc.paragraphIndex());
                 chunkMapper.insert(c);
+                esDocs.add(EsChunkDocument.from(c, doc.getFilename()));
             }
+            esChunkService.bulkIndexChunks(esDocs);
             doc.setChunkCount(pieces.size());
             doc.setStatus("success");
         }
@@ -180,12 +185,12 @@ public class DocumentServiceImpl implements DocumentService {
 
         chunkMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KnowledgeChunk>()
                 .eq("doc_id", docId));
+        esChunkService.deleteByDocId(docId);
 
-        // 重新分块用 knowledge_document.content（已是 finalize 时存好的全文）。
-        // 注意：失去原始页边界，所以页码统一按"单页"处理；段落序号能完整重建。
         String content = doc.getContent() == null ? "" : doc.getContent();
         List<com.reportai.hub.knowledge.service.TextChunker.PageAwareChunk> pieces =
                 textChunker.chunkByPage(List.of(content));
+        List<EsChunkDocument> esDocs = new ArrayList<>();
         for (int i = 0; i < pieces.size(); i++) {
             var pc = pieces.get(i);
             KnowledgeChunk c = new KnowledgeChunk();
@@ -194,9 +199,10 @@ public class DocumentServiceImpl implements DocumentService {
             c.setChunkIndex(i);
             c.setContent(pc.text());
             c.setParagraphIndex(pc.paragraphIndex());
-            // reembed 没有原始页号信息，PDF 也保留原 page_start 不准确，所以 null
             chunkMapper.insert(c);
+            esDocs.add(EsChunkDocument.from(c, doc.getFilename()));
         }
+        esChunkService.bulkIndexChunks(esDocs);
 
         doc.setChunkCount(pieces.size());
         doc.setStatus("success");
@@ -225,14 +231,13 @@ public class DocumentServiceImpl implements DocumentService {
 
     private void finalizeDocument(KnowledgeDocument doc, List<String> pages) {
         if (pages == null) pages = List.of();
-        // knowledge_document.content 存全文（页间用 \n\n 分），便于后台搜查/预览
         String joined = String.join("\n\n", pages);
         doc.setContent(truncateForDb(joined));
 
-        // 页码感知切块：PDF 得到 pageStart/pageEnd=实际页号；其他格式 pageStart=pageEnd=1
         List<com.reportai.hub.knowledge.service.TextChunker.PageAwareChunk> pieces =
                 textChunker.chunkByPage(pages);
         List<KnowledgeChunk> chunks = new ArrayList<>(pieces.size());
+        List<EsChunkDocument> esDocs = new ArrayList<>();
         for (int i = 0; i < pieces.size(); i++) {
             var pc = pieces.get(i);
             KnowledgeChunk c = new KnowledgeChunk();
@@ -240,7 +245,6 @@ public class DocumentServiceImpl implements DocumentService {
             c.setKbId(doc.getKbId());
             c.setChunkIndex(i);
             c.setContent(pc.text());
-            // 只有一页（text/html、txt、md）时页码不具备展示价值，留 null 让前端不展示"第 1 页"。
             if (pages.size() > 1) {
                 c.setPageStart(pc.pageStart());
                 c.setPageEnd(pc.pageEnd());
@@ -250,7 +254,9 @@ public class DocumentServiceImpl implements DocumentService {
         }
         for (KnowledgeChunk c : chunks) {
             chunkMapper.insert(c);
+            esDocs.add(EsChunkDocument.from(c, doc.getFilename()));
         }
+        esChunkService.bulkIndexChunks(esDocs);
 
         doc.setChunkCount(chunks.size());
         doc.setStatus("success");

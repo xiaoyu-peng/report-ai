@@ -161,9 +161,34 @@
           <div class="viewer-meta" v-if="viewerDoc">
             <el-tag size="small" effect="plain">分块 {{ viewerDoc.chunkCount }}</el-tag>
             <el-tag size="small" effect="plain">{{ formatSize(viewerDoc.fileSize) }}</el-tag>
+            <el-button
+              v-if="viewerMode === 'view' && docChunks.length > 0"
+              size="small"
+              text
+              type="primary"
+              @click="showChunks = !showChunks"
+            >
+              {{ showChunks ? '隐藏内容块' : `查看 ${docChunks.length} 个内容块` }}
+            </el-button>
             <span class="viewer-hint" v-if="viewerMode === 'edit'">
               保存时若正文变更将重新分块，检索结果会随之更新。
             </span>
+          </div>
+
+          <div v-if="viewerMode === 'view' && showChunks && docChunks.length > 0" class="chunks-section">
+            <div class="chunks-header">
+              <span>内容块列表</span>
+              <el-tag size="small" type="info" effect="plain">共 {{ docChunks.length }} 块</el-tag>
+            </div>
+            <div class="chunks-list">
+              <div v-for="chunk in docChunks" :key="chunk.id" class="chunk-item">
+                <div class="chunk-header">
+                  <span class="chunk-index">第 {{ chunk.chunkIndex + 1 }} 块</span>
+                  <span class="chunk-chars">约 {{ chunk.content?.length || 0 }} 字</span>
+                </div>
+                <div class="chunk-content">{{ chunk.content }}</div>
+              </div>
+            </div>
           </div>
         </el-form>
       </div>
@@ -181,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -193,8 +218,10 @@ import {
   uploadDocument,
   deleteDocument,
   searchKnowledge,
+  getDocumentChunks,
   type KnowledgeBase,
-  type KnowledgeDocument
+  type KnowledgeDocument,
+  type KnowledgeChunk
 } from '@/api/knowledge'
 
 const route = useRoute()
@@ -221,9 +248,11 @@ const saving = ref(false)
 // 预览分三态：pdf = iframe 原生 / html = 后端 docx→html srcdoc / text = 回退到文本 textarea
 type PreviewKind = 'pdf' | 'html' | 'text'
 const previewKind = ref<PreviewKind>('text')
-const previewUrl = ref('')   // Object URL，用完要 revoke
-const previewHtml = ref('')  // 后端 DOCX → HTML 的全文
-const previewWarn = ref('')  // 「原文件已不保留，回退纯文本」之类的提示
+const previewUrl = ref('')
+const previewHtml = ref('')
+const previewWarn = ref('')
+const docChunks = ref<KnowledgeChunk[]>([])
+const showChunks = ref(false)
 
 /** 读带鉴权的原文件，生成 Object URL 给 iframe。失败返回空串（前端回退到文本）。 */
 async function fetchBlobAsObjectUrl(docId: number): Promise<string> {
@@ -261,20 +290,26 @@ async function openViewer(row: KnowledgeDocument, mode: 'view' | 'edit') {
   previewHtml.value = ''
   previewWarn.value = ''
   previewKind.value = 'text'
+  docChunks.value = []
+  showChunks.value = false
   viewerVisible.value = true
   viewerLoading.value = true
 
   try {
-    // 拉详情（meta + content），两个请求并发
-    const [detailRes] = await Promise.all([getDocument(row.id)])
+    const [detailRes, chunksRes] = await Promise.all([
+      getDocument(row.id),
+      getDocumentChunks(row.id)
+    ])
     const full = (detailRes as any).data as KnowledgeDocument
     if (full) {
       viewerDoc.value = full
       viewerFilename.value = full.filename
       viewerContent.value = full.content ?? ''
     }
+    const chunksData = (chunksRes as any).data
+    docChunks.value = Array.isArray(chunksData) ? chunksData : []
 
-    if (mode !== 'view') return // 编辑态不加载预览
+    if (mode !== 'view') return
 
     const ft = (full?.fileType || row.fileType || '').toLowerCase()
     const fn = (full?.filename || row.filename || '').toLowerCase()
@@ -347,6 +382,19 @@ onMounted(async () => {
     return
   }
   await Promise.all([loadKb(), loadDocuments()])
+  
+  // 如果 URL 中有 docId 参数，自动打开该文档
+  const docIdParam = route.query.docId
+  if (docIdParam) {
+    const docId = Number(docIdParam)
+    if (Number.isFinite(docId) && docId > 0) {
+      // 等待文档列表加载完成后，找到并打开该文档
+      const doc = documents.value.find(d => d.id === docId)
+      if (doc) {
+        nextTick(() => openViewer(doc, 'view'))
+      }
+    }
+  }
 })
 
 async function loadKb() {
@@ -597,5 +645,53 @@ function clearSearch() {
   margin-top: 6px;
   font-size: 12px;
   color: #d97706;
+}
+.chunks-section {
+  margin-top: 16px;
+  padding-left: 70px;
+}
+.chunks-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+.chunks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.chunk-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+.chunk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.chunk-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+}
+.chunk-chars {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.chunk-content {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

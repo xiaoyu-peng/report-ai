@@ -8,6 +8,10 @@
       </el-button>
     </div>
 
+    <p class="page-hint">
+      知识库是报告的<strong>事实来源</strong>——批量收录政策法规、行业研究、历史报告、媒体资讯等资料，按主题分类管理并支持网页外挂，为写作提供<strong>有据可查的引用依据</strong>。
+    </p>
+
     <div class="category-tabs">
       <el-radio-group v-model="activeCategory" size="default" @change="fetchList">
         <el-radio-button value="">全部</el-radio-button>
@@ -266,6 +270,19 @@ async function handleDelete(kb: KnowledgeBase) {
   font-weight: 600;
   color: #0f172a;
   margin: 0;
+}
+.page-hint {
+  color: #64748b;
+  font-size: 13px;
+  background: #f5f3ff;
+  border-left: 3px solid #6366f1;
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 0 0 16px 0;
+  line-height: 1.7;
+}
+.page-hint strong {
+  color: #4338ca;
 }
 .category-tabs {
   margin-bottom: 20px;

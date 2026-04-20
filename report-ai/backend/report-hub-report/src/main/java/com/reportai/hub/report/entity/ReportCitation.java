@@ -26,6 +26,8 @@ public class ReportCitation {
     private Integer citationMarker;
     private Long chunkId;
     private Long docId;
+    /** 所属知识库 ID，用于跳转到原文。 */
+    private Long kbId;
     private String docTitle;
     private Integer pageStart;
     private Integer pageEnd;

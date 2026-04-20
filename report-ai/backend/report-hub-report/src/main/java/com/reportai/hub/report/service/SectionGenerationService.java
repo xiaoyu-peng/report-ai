@@ -47,8 +47,16 @@ public class SectionGenerationService {
     private final CitationParser citationParser;
 
     /**
-     * 把大纲拆成 sections 行入库（覆盖式：旧的 section 全清，重新写入）。
-     * outline 元素：{title, prompt}（prompt 可缺）
+     * 把大纲拆成 sections 行入库。按标题合并：新 outline 中已有同标题 done 章节的，
+     * 保留原 content / wordCount / citationCount / 时间戳；其余为 pending 待生成。
+     *
+     * <p>outline 元素：{title, prompt, content?, status?}
+     * <ul>
+     *   <li>content 非空：以 done 状态直接入库（"导入原报告"场景）</li>
+     *   <li>title 命中已有 done 章节：保留原内容（OutlineEditor 增删章节场景）</li>
+     *   <li>其余：status=pending</li>
+     * </ul>
+     * 被删除的旧章节内容不会自动保留——用户在 OutlineEditor 里拿掉一个标题即视为放弃该章。
      */
     @Transactional
     public List<ReportSection> initSections(Long reportId, List<Map<String, String>> outline) {
@@ -58,9 +66,19 @@ public class SectionGenerationService {
         Report r = reportMapper.selectById(reportId);
         if (r == null) throw new BusinessException("报告不存在: " + reportId);
 
+        List<ReportSection> existing = sectionMapper.selectList(
+                new QueryWrapper<ReportSection>().eq("report_id", reportId));
+        Map<String, ReportSection> byTitle = existing.stream()
+                .filter(s -> s.getTitle() != null && !s.getTitle().isBlank())
+                .collect(Collectors.toMap(
+                        s -> s.getTitle().trim(),
+                        s -> s,
+                        (a, b) -> "done".equals(a.getStatus()) ? a : b));
+
         sectionMapper.delete(new QueryWrapper<ReportSection>().eq("report_id", reportId));
 
         List<ReportSection> rows = new ArrayList<>(outline.size());
+        int preservedCount = 0, importedCount = 0;
         for (int i = 0; i < outline.size(); i++) {
             Map<String, String> item = outline.get(i);
             ReportSection s = new ReportSection();
@@ -68,13 +86,38 @@ public class SectionGenerationService {
             s.setSectionIndex(i);
             s.setTitle(item == null ? null : item.get("title"));
             s.setPrompt(item == null ? null : item.get("prompt"));
-            s.setStatus("pending");
-            s.setWordCount(0);
-            s.setCitationCount(0);
+
+            String title = s.getTitle() == null ? null : s.getTitle().trim();
+            ReportSection prev = title != null ? byTitle.get(title) : null;
+            String preContent = item == null ? null : item.get("content");
+
+            if (prev != null && "done".equals(prev.getStatus())
+                    && prev.getContent() != null && !prev.getContent().isBlank()) {
+                s.setContent(prev.getContent());
+                s.setStatus("done");
+                s.setWordCount(prev.getWordCount());
+                s.setCitationCount(prev.getCitationCount());
+                s.setStartedAt(prev.getStartedAt());
+                s.setFinishedAt(prev.getFinishedAt());
+                preservedCount++;
+            } else if (preContent != null && !preContent.isBlank()) {
+                s.setContent(preContent);
+                s.setStatus("done");
+                s.setWordCount(preContent.length());
+                s.setCitationCount(0);
+                s.setFinishedAt(LocalDateTime.now());
+                importedCount++;
+            } else {
+                s.setStatus("pending");
+                s.setWordCount(0);
+                s.setCitationCount(0);
+            }
             sectionMapper.insert(s);
             rows.add(s);
         }
-        log.info("init {} sections for report {}", rows.size(), reportId);
+        log.info("init {} sections for report {} (preserved {} / imported {} / pending {})",
+                rows.size(), reportId, preservedCount, importedCount,
+                rows.size() - preservedCount - importedCount);
         return rows;
     }
 

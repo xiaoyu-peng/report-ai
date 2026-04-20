@@ -1,5 +1,9 @@
 <template>
-  <div class="workspace-container">
+  <div class="workspace-page">
+    <p class="page-hint">
+      写作工作台：选模板 + 知识库 + 主题，<strong>一键生成</strong>带引用来源标注的完整报告，支持补充 / 排除关键词微调检索范围。
+    </p>
+    <div class="workspace-container">
     <!-- Left: Config Panel -->
     <div class="config-panel">
       <el-card class="config-card">
@@ -21,12 +25,12 @@
             />
           </el-form-item>
 
-          <el-form-item label="核心主题">
+          <el-form-item label="核心主题" required>
             <el-input
               v-model="form.topic"
               type="textarea"
               :rows="3"
-              placeholder="描述报告的核心主题和目标..."
+              placeholder="描述报告的核心主题和目标（必填）..."
               :disabled="generating"
             />
           </el-form-item>
@@ -44,7 +48,7 @@
           <el-form-item label="选择知识库">
             <el-select
               v-model="form.kbId"
-              placeholder="选择参考知识库（可选）"
+              placeholder="选择知识库（可选，不选则基于模板风格生成）"
               clearable
               style="width: 100%"
               :disabled="generating"
@@ -61,6 +65,7 @@
                 </span>
               </el-option>
             </el-select>
+            <div class="form-hint">选择知识库后，AI 将基于内部文档生成报告，实现"知识库驱动生成"</div>
           </el-form-item>
 
           <el-form-item v-if="form.kbId" label="检索条件">
@@ -633,6 +638,16 @@
                     </div>
                     <span class="score-text">相关度 {{ (c.score * 100).toFixed(0) }}%</span>
                   </div>
+                  <div class="citation-actions">
+                    <el-button size="small" text type="primary" @click="showFullChunk(c)">
+                      <el-icon><DataLine /></el-icon>
+                      展开全文
+                    </el-button>
+                    <el-button size="small" text type="primary" @click="goToSource(c)">
+                      <el-icon><Document /></el-icon>
+                      查看原文
+                    </el-button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -768,11 +783,42 @@
         </div>
       </transition>
     </Teleport>
+
+    <!-- 展开全文弹窗 -->
+    <el-dialog
+      v-model="fullChunkDialog.visible"
+      :title="fullChunkDialog.title"
+      width="700px"
+      destroy-on-close
+    >
+      <div v-if="fullChunkDialog.loading" class="full-chunk-loading">
+        <el-icon class="is-loading" style="font-size: 24px"><Loading /></el-icon>
+        <span>加载中...</span>
+      </div>
+      <div v-else class="full-chunk-content">
+        <div class="full-chunk-meta">
+          <el-tag size="small" type="info">{{ fullChunkDialog.docName }}</el-tag>
+          <el-tag v-if="fullChunkDialog.pageLabel" size="small" type="warning" effect="plain">
+            {{ fullChunkDialog.pageLabel }}
+          </el-tag>
+          <el-tag size="small" effect="plain">#{{ fullChunkDialog.chunkIndex }}</el-tag>
+        </div>
+        <div class="full-chunk-body">{{ fullChunkDialog.content }}</div>
+      </div>
+      <template #footer>
+        <el-button @click="fullChunkDialog.visible = false">关闭</el-button>
+        <el-button type="primary" @click="goToSourceFromDialog">
+          <el-icon><Document /></el-icon>
+          查看原文
+        </el-button>
+      </template>
+    </el-dialog>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import {
   ElMessage,
   ElMessageBox
@@ -827,6 +873,8 @@ interface ChunkHit {
   pageEnd?: number | null
   content: string
   score: number
+  kbId?: number
+  docId?: number
 }
 
 /** 根据数据源名字推回图标；晴天 MCP 用 🌤️，Tavily 用 🌐，其他兜底通用图标。 */
@@ -889,6 +937,87 @@ const templates = ref<Template[]>([])
 // 引用溯源状态 —— 后端通过 SSE chunks 事件推送 RAG top-k 命中列表。
 const chunks = ref<ChunkHit[]>([])
 const highlightedCite = ref<number | null>(null)
+
+// 展开全文弹窗状态
+const fullChunkDialog = ref<{
+  visible: boolean
+  loading: boolean
+  title: string
+  docName: string
+  chunkIndex: number
+  pageLabel: string
+  content: string
+  kbId: number | null
+  docId: number | null
+}>({
+  visible: false,
+  loading: false,
+  title: '',
+  docName: '',
+  chunkIndex: 0,
+  pageLabel: '',
+  content: '',
+  kbId: null,
+  docId: null
+})
+
+async function showFullChunk(c: ChunkHit) {
+  fullChunkDialog.value = {
+    visible: true,
+    loading: true,
+    title: `[${c.index}] ${c.filename}`,
+    docName: c.filename,
+    chunkIndex: c.chunkIndex,
+    pageLabel: pageLabel(c),
+    content: '',
+    kbId: c.kbId || null,
+    docId: c.docId || null
+  }
+  try {
+    const res = await fetch(`/api/v1/chunks/${c.id}`, {
+      headers: { Authorization: `Bearer ${userStore.token}` }
+    })
+    const data = await res.json()
+    if (data.code === 200 && data.data) {
+      fullChunkDialog.value.content = data.data.content || c.content
+      fullChunkDialog.value.docName = data.data.docName || c.filename
+      if (data.data.pageStart) {
+        const ps = data.data.pageStart
+        const pe = data.data.pageEnd
+        fullChunkDialog.value.pageLabel = pe && pe !== ps ? `第 ${ps}-${pe} 页` : `第 ${ps} 页`
+      }
+    } else {
+      fullChunkDialog.value.content = c.content
+    }
+  } catch (e) {
+    console.error('Failed to load full chunk:', e)
+    fullChunkDialog.value.content = c.content
+  } finally {
+    fullChunkDialog.value.loading = false
+  }
+}
+
+function goToSource(c: ChunkHit) {
+  const kbId = c.kbId || form.value.kbId
+  if (kbId && c.docId) {
+    window.open(`/knowledge/${kbId}/doc/${c.docId}`, '_blank')
+  } else if (kbId) {
+    window.open(`/knowledge/${kbId}`, '_blank')
+  } else {
+    ElMessage.warning('无法定位原文位置')
+  }
+}
+
+function goToSourceFromDialog() {
+  const d = fullChunkDialog.value
+  if (d.kbId && d.docId) {
+    window.open(`/knowledge/${d.kbId}/doc/${d.docId}`, '_blank')
+  } else if (d.kbId) {
+    window.open(`/knowledge/${d.kbId}`, '_blank')
+  } else {
+    ElMessage.warning('无法定位原文位置')
+  }
+}
 
 // 数据源汇总 —— 后端 SSE sources 事件，展示 RAG/晴天MCP/Tavily 各自命中量，方便评委核验
 const dataSources = ref<DataSourcesPayload | null>(null)
@@ -1637,12 +1766,14 @@ async function handleSectionRewrite(block: HTMLElement, mode: string) {
   const sectionText = block.textContent?.trim() || ''
   if (!sectionText) return
 
-  sectionRewriting.value = true
   const modeLabels: Record<string, string> = {
     rewrite: '改写',
     expand: '扩写',
     condense: '精简'
   }
+
+  sectionRewriting.value = true
+  let newSection = ''
 
   try {
     const resp = await fetch(`/api/v1/reports/${currentReportId.value}/rewrite-section`, {
@@ -1660,7 +1791,6 @@ async function handleSectionRewrite(block: HTMLElement, mode: string) {
     if (!reader) throw new Error('无法读取流')
 
     const decoder = new TextDecoder()
-    let newSection = ''
     let buffer = ''
 
     while (true) {
@@ -1678,17 +1808,41 @@ async function handleSectionRewrite(block: HTMLElement, mode: string) {
         }
       }
     }
-
-    if (newSection.trim()) {
-      content.value = content.value.replace(sectionText, newSection.trim())
-      ElMessage.success(`段落${modeLabels[mode] || mode}完成`)
-    }
   } catch (e) {
     console.error('段落改写失败:', e)
     ElMessage.error('段落改写失败')
+    sectionRewriting.value = false
+    return
   } finally {
     sectionRewriting.value = false
   }
+
+  if (!newSection.trim()) {
+    ElMessage.warning('生成内容为空')
+    return
+  }
+
+  ElMessageBox.confirm(
+    `是否用${modeLabels[mode]}后的内容替换原段落？`,
+    `${modeLabels[mode]}预览`,
+    {
+      distinguishCancelAndClose: true,
+      confirmButtonText: '替换',
+      cancelButtonText: '取消',
+      type: 'info',
+      message: h('div', { style: 'max-height: 300px; overflow-y: auto;' }, [
+        h('div', { style: 'margin-bottom: 8px; font-weight: 600; color: #64748b;' }, '原内容：'),
+        h('div', { style: 'margin-bottom: 16px; padding: 8px; background: #f1f5f9; border-radius: 4px; font-size: 13px; line-height: 1.6;' }, sectionText.substring(0, 300) + (sectionText.length > 300 ? '...' : '')),
+        h('div', { style: 'margin-bottom: 8px; font-weight: 600; color: #6366f1;' }, '新内容：'),
+        h('div', { style: 'padding: 8px; background: #eef2ff; border-radius: 4px; font-size: 13px; line-height: 1.6;' }, newSection.trim().substring(0, 300) + (newSection.length > 300 ? '...' : ''))
+      ])
+    }
+  ).then(() => {
+    content.value = content.value.replace(sectionText, newSection.trim())
+    ElMessage.success(`段落${modeLabels[mode]}完成`)
+  }).catch(() => {
+    ElMessage.info('已取消替换')
+  })
 }
 
 async function saveReport() {
@@ -1878,10 +2032,29 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 </script>
 
 <style scoped>
+.workspace-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.page-hint {
+  color: #64748b;
+  font-size: 13px;
+  background: #f5f3ff;
+  border-left: 3px solid #6366f1;
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 0 0 12px 0;
+  line-height: 1.7;
+}
+.page-hint strong {
+  color: #4338ca;
+}
 .workspace-container {
   display: flex;
   gap: 20px;
-  height: calc(100vh - 140px);
+  flex: 1;
+  min-height: 0;
 }
 
 /* 数据来源卡 —— 评委可直接看"本次引用/抓取覆盖面" */
@@ -2281,11 +2454,21 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 .citation-foot {
   margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 .citation-score {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+}
+.citation-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 .score-bar {
   flex: 1;
@@ -2304,6 +2487,37 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   font-size: 11px;
   color: #64748b;
   white-space: nowrap;
+}
+
+/* 展开全文弹窗 */
+.full-chunk-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 12px;
+  color: #64748b;
+}
+.full-chunk-content {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.full-chunk-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.full-chunk-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+  font-size: 14px;
+  color: #334155;
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 
 /* 外部数据自动化提示 —— 取代旧的 3 个手动按钮 */
@@ -2641,6 +2855,13 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   background: #6366f1;
   color: #fff;
   border-color: #6366f1;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
 .search-conditions {

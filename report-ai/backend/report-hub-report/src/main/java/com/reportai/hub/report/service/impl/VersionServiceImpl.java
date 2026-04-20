@@ -122,10 +122,11 @@ public class VersionServiceImpl implements VersionService {
                 i++; j++;
             } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
                 // 看下一步是 delete 还是 replace（若紧接着是 insert，合并为 replace）
+                // 注意：数组索引比较用 `<` 而非 `<=`，否则 b[m] / a[n] 会越界
                 if (i + 1 <= n && j < m && !a[i].equals(b[j])
                         && (i + 1 == n || !a[i + 1].equals(b[j]))) {
                     // 若 newline 也要前进，合并为 replace
-                    if (j + 1 <= m && a[i].equals(b[j + 1])) {
+                    if (j + 1 < m && a[i].equals(b[j + 1])) {
                         out.add(line(DiffResult.Op.INSERT, null, b[j]));
                         j++;
                     } else {

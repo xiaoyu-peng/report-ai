@@ -59,8 +59,10 @@ async function show(el: HTMLElement, marker: number) {
 }
 
 function openDoc() {
-  if (citation.value?.docId) {
-    window.open(`/knowledge/${citation.value.docId}`, '_blank')
+  if (citation.value?.kbId && citation.value?.docId) {
+    window.open(`/knowledge/${citation.value.kbId}?docId=${citation.value.docId}`, '_blank')
+  } else if (citation.value?.kbId) {
+    window.open(`/knowledge/${citation.value.kbId}`, '_blank')
   }
 }
 

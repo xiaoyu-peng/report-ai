@@ -95,6 +95,26 @@ export const updateReport = (id: number, data: UpdateReportParams) =>
 export const deleteReport = (id: number) =>
   request.delete(`/v1/reports/${id}`)
 
+// —— 引用溯源 ——
+export interface ReportCitation {
+  id: number
+  reportId: number
+  versionId?: number
+  sectionIndex: number
+  paragraphIndex: number
+  citationMarker: number
+  chunkId: number
+  docId: number
+  docTitle?: string
+  pageStart?: number
+  pageEnd?: number
+  snippet?: string
+  accepted: number
+  createdAt?: string
+}
+export const getReportCitations = (reportId: number) =>
+  request.get(`/v1/reports/${reportId}/citations`)
+
 // Templates CRUD
 export const getTemplates = () =>
   request.get('/v1/templates')
@@ -146,7 +166,8 @@ export interface QualityReport {
   factualityIssues?: QualityFactualityIssue[]
 }
 export const checkReportQuality = (reportId: number) =>
-  request.get<QualityReport>(`/v1/reports/${reportId}/quality/check`)
+  // 质检走 LLM as judge，实测 40~80s，要远超全局 30s timeout，单独放开到 3min
+  request.get<QualityReport>(`/v1/reports/${reportId}/quality/check`, { timeout: 180_000 })
 
 // Dashboard stats
 export interface DashboardStats {

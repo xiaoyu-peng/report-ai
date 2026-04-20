@@ -19,6 +19,7 @@ import com.reportai.hub.report.mapper.ReportTemplateMapper;
 import com.reportai.hub.report.mapper.ReportVersionMapper;
 import com.reportai.hub.report.prompt.Prompts;
 import com.reportai.hub.report.service.CitationParser;
+import com.reportai.hub.report.service.KeywordExtractorService;
 import com.reportai.hub.report.service.QualityMetricsService;
 import com.reportai.hub.report.service.ReportGenerationService;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +68,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     private final TavilyClient tavilyClient;
     private final CitationParser citationParser;
     private final QualityMetricsService qualityMetricsService;
+    private final KeywordExtractorService keywordExtractorService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -316,8 +318,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         String topic = report.getTopic();
         if (topic == null || topic.isBlank()) return McpResult.empty();
 
-        // 路由优先级：模板名 → 主题关键词 → 通用兜底。
-        // 以前的版本要求必须有模板名，导致"用户不选模板就彻底不拉 MCP"——这条路径砍掉。
+        String title = report.getTitle();
+        List<String> keywords = keywordExtractorService.extractKeywordsForSearch(title, topic);
+        log.info("Auto-extracted keywords for report '{}': {}", title, keywords);
+
         String route = classifyRoute(getTemplateName(report), topic);
 
         String endDate = LocalDate.now().toString();
@@ -329,29 +333,49 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         try {
             switch (route) {
                 case "propagation" -> {
-                    // 传播/舆情类：晴天 sass 全家桶（6 个工具）
                     appendMcpResult(mcpData, used, "舆情概览", sassMcpService.overview(topic, startDate, endDate));
                     appendMcpResult(mcpData, used, "热门文章", sassMcpService.hotArticle(topic, startDate, endDate, 5));
                     appendMcpResult(mcpData, used, "情感分布", sassMcpService.emotionalDistribution(topic, startDate, endDate));
                     appendMcpResult(mcpData, used, "渠道声量", sassMcpService.datasourceSound(topic, startDate, endDate));
                     appendMcpResult(mcpData, used, "事件阶段演化", sassMcpService.stageEnvolution(topic, startDate, endDate));
                     appendMcpResult(mcpData, used, "事件概述", sassMcpService.generateEventTopicInfo(topic, startDate, endDate));
+                    
+                    for (String kw : keywords) {
+                        if (!kw.equals(topic) && used.size() < 12) {
+                            appendTavilyResult(mcpData, used, kw, 3);
+                        }
+                    }
                 }
                 case "policy", "industry" -> {
-                    // 政策 / 行业：晴天 search + 热词 + Tavily 补 web 权威源
                     appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 10));
                     appendMcpResult(mcpData, used, "热门词云", sassMcpService.hotWords(topic, startDate, endDate));
                     appendTavilyResult(mcpData, used, topic, 5);
+                    
+                    for (String kw : keywords) {
+                        if (!kw.equals(topic) && used.size() < 10) {
+                            appendMcpResult(mcpData, used, "相关搜索-" + kw, searchMcpService.searchArticles(kw, 1, 3));
+                        }
+                    }
                 }
                 case "tech" -> {
-                    // 科技/技术：技术类主题以 web 搜索为主（晴天舆情语料不丰富），搭一点搜索 mcp
                     appendTavilyResult(mcpData, used, topic, 8);
                     appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
+                    
+                    for (String kw : keywords) {
+                        if (!kw.equals(topic) && used.size() < 10) {
+                            appendTavilyResult(mcpData, used, kw, 3);
+                        }
+                    }
                 }
                 default -> {
-                    // 通用兜底：search mcp（中文搜索更强）+ Tavily web（英文/通用主题更强）
                     appendMcpResult(mcpData, used, "相关文章搜索", searchMcpService.searchArticles(topic, 1, 5));
                     appendTavilyResult(mcpData, used, topic, 5);
+                    
+                    for (String kw : keywords) {
+                        if (!kw.equals(topic) && used.size() < 8) {
+                            appendTavilyResult(mcpData, used, kw, 2);
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
@@ -382,6 +406,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
     /** Tavily 搜索结果拼成 prompt 文本。只取 title/url/content 前 200 字，防止撑爆 context。 */
     private void appendTavilyResult(StringBuilder mcpData, java.util.List<String> used, String topic, int maxResults) {
+        if (!tavilyClient.isConfigured()) {
+            log.debug("Tavily API key not configured, skipping Tavily search for: {}", topic);
+            return;
+        }
         try {
             JsonNode r = tavilyClient.search(topic, maxResults);
             if (r == null || r.isNull()) return;
