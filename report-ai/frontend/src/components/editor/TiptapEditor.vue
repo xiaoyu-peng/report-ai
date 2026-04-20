@@ -145,10 +145,11 @@ async function onAi(mode: 'default' | 'expand' | 'condense') {
   if (!text.trim()) return
   aiLoading.value = true
   try {
+    // 段落级改写走 LLM，实测 20~60s；全局 30s 会超，放开到 3 min
     const res = await request.post(`/v1/reports/${props.reportId}/rewrite/section`, {
       content: text,
       mode,
-    })
+    }, { timeout: 180_000 })
     const newText = (res.data as any) || ''
     if (newText) {
       editor.value.chain().focus().deleteSelection().insertContent(newText).run()

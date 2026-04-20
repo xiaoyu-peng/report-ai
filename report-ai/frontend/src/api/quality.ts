@@ -17,4 +17,5 @@ export const getQuality = (reportId: number) =>
   request.get<ReportQuality>(`/v1/reports/${reportId}/quality`)
 
 export const recheckQuality = (reportId: number) =>
-  request.post<ReportQuality>(`/v1/reports/${reportId}/quality/recheck`)
+  // 重跑质检会调 LLM，全局 30s 兜不住，放开到 3 min
+  request.post<ReportQuality>(`/v1/reports/${reportId}/quality/recheck`, null, { timeout: 180_000 })
