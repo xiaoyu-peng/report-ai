@@ -12,40 +12,68 @@
       <el-radio-group v-model="activeCategory" size="default" @change="fetchList">
         <el-radio-button value="">全部</el-radio-button>
         <el-radio-button value="policy">政策法规</el-radio-button>
+        <el-radio-button value="macro">宏观经济</el-radio-button>
         <el-radio-button value="industry">行业报告</el-radio-button>
+        <el-radio-button value="consumer">消费市场</el-radio-button>
         <el-radio-button value="history">历史报告</el-radio-button>
         <el-radio-button value="media">媒体资讯</el-radio-button>
         <el-radio-button value="other">其他</el-radio-button>
       </el-radio-group>
     </div>
 
-    <el-row :gutter="16" v-loading="loading">
-      <el-col v-for="kb in list" :key="kb.id" :span="8">
-        <el-card class="kb-card" shadow="hover" @click="goDetail(kb.id)">
-          <div class="kb-icon" :class="getCategoryClass(kb.category)">
-            <el-icon><Collection /></el-icon>
+    <el-table
+      v-loading="loading"
+      :data="list"
+      row-key="id"
+      stripe
+      style="width: 100%"
+      empty-text="暂无知识库，点击右上角新建"
+      @row-click="(row) => goDetail(row.id)"
+    >
+      <el-table-column label="分类" width="120">
+        <template #default="{ row }">
+          <el-tag size="small" :type="getCategoryTagType(row.category)" effect="light">
+            {{ getCategoryLabel(row.category) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="名称" min-width="180">
+        <template #default="{ row }">
+          <div class="kb-name-cell">
+            <div class="kb-icon-sm" :class="getCategoryClass(row.category)">
+              <el-icon><Collection /></el-icon>
+            </div>
+            <span class="kb-name-text">{{ row.name }}</span>
           </div>
-          <div class="kb-name">{{ kb.name }}</div>
-          <div class="kb-desc">{{ kb.description || '暂无描述' }}</div>
-          <div class="kb-meta">
-            <el-tag size="small" :type="getCategoryTagType(kb.category)" effect="light">
-              {{ getCategoryLabel(kb.category) }}
-            </el-tag>
-            <el-tag size="small" effect="light">{{ kb.docCount ?? 0 }} 文档</el-tag>
-            <el-tag size="small" type="info" effect="light">{{ kb.chunkCount ?? 0 }} 分块</el-tag>
-          </div>
-          <div class="kb-actions" @click.stop>
-            <el-button size="small" type="danger" plain @click="handleDelete(kb)">
-              <el-icon><Delete /></el-icon>
+        </template>
+      </el-table-column>
+      <el-table-column label="描述" min-width="260" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="kb-desc-cell">{{ row.description || '暂无描述' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="文档数" width="100" align="right">
+        <template #default="{ row }">{{ row.docCount ?? 0 }}</template>
+      </el-table-column>
+      <el-table-column label="分块数" width="100" align="right">
+        <template #default="{ row }">{{ row.chunkCount ?? 0 }}</template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="170">
+        <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="160" fixed="right">
+        <template #default="{ row }">
+          <div class="row-actions" @click.stop>
+            <el-button size="small" type="primary" link @click="goDetail(row.id)">
+              查看
+            </el-button>
+            <el-button size="small" type="danger" link @click="handleDelete(row)">
               删除
             </el-button>
           </div>
-        </el-card>
-      </el-col>
-      <el-col v-if="!loading && list.length === 0" :span="24">
-        <el-empty description="暂无知识库，点击右上角新建" />
-      </el-col>
-    </el-row>
+        </template>
+      </el-table-column>
+    </el-table>
 
     <el-dialog v-model="showCreateDialog" title="新建知识库" width="460px" @closed="resetForm">
       <el-form ref="formRef" :model="createForm" :rules="rules" label-width="80px">
@@ -55,7 +83,9 @@
         <el-form-item label="分类" prop="category">
           <el-select v-model="createForm.category" placeholder="选择知识库分类" style="width: 100%">
             <el-option label="政策法规" value="policy" />
+            <el-option label="宏观经济" value="macro" />
             <el-option label="行业报告" value="industry" />
+            <el-option label="消费市场" value="consumer" />
             <el-option label="历史报告" value="history" />
             <el-option label="媒体资讯" value="media" />
             <el-option label="其他" value="other" />
@@ -114,7 +144,9 @@ const rules: FormRules = {
 
 const categoryMap: Record<string, string> = {
   policy: '政策法规',
+  macro: '宏观经济',
   industry: '行业报告',
+  consumer: '消费市场',
   history: '历史报告',
   media: '媒体资讯',
   other: '其他'
@@ -127,12 +159,21 @@ function getCategoryLabel(cat?: string): string {
 function getCategoryTagType(cat?: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
   const map: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     policy: 'danger',
+    macro: 'primary',
     industry: 'warning',
+    consumer: 'success',
     history: 'primary',
     media: 'success',
     other: 'info'
   }
   return map[cat || 'other'] || 'info'
+}
+
+function formatTime(t?: string): string {
+  if (!t) return '—'
+  // 兼容两种序列化：`yyyy-MM-dd HH:mm:ss`（Jackson 全局格式）和 `yyyy-MM-ddTHH:mm:ss`（Instant 默认）
+  const s = t.replace('T', ' ')
+  return s.length > 16 ? s.substring(0, 16) : s
 }
 
 function getCategoryClass(cat?: string): string {
@@ -229,78 +270,41 @@ async function handleDelete(kb: KnowledgeBase) {
 .category-tabs {
   margin-bottom: 20px;
 }
-.kb-card {
-  cursor: pointer;
-  transition: all 0.25s ease;
-  margin-bottom: 16px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-}
-.kb-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  border-color: #c7d2fe;
-}
-.kb-icon {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
+.kb-name-cell {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 26px;
+  gap: 10px;
 }
-.kb-icon.policy {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-.kb-icon.industry {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-}
-.kb-icon.history {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
-}
-.kb-icon.media {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-}
-.kb-icon.other {
-  background: rgba(100, 116, 139, 0.1);
-  color: #64748b;
-}
-.kb-name {
-  font-size: 16px;
+.kb-name-text {
   font-weight: 600;
   color: #0f172a;
-  margin: 8px 0 6px;
 }
-.kb-desc {
+.kb-icon-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.kb-icon-sm.policy   { background: rgba(239, 68, 68, 0.12);  color: #ef4444; }
+.kb-icon-sm.macro    { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
+.kb-icon-sm.industry { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.kb-icon-sm.consumer { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.kb-icon-sm.history  { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
+.kb-icon-sm.media    { background: rgba(14, 165, 233, 0.12); color: #0ea5e9; }
+.kb-icon-sm.other    { background: rgba(100, 116, 139, 0.12); color: #64748b; }
+
+.kb-desc-cell {
   color: #64748b;
   font-size: 13px;
-  margin-bottom: 14px;
-  min-height: 20px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 8px;
 }
-.kb-meta {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
+.row-actions {
+  display: inline-flex;
+  gap: 4px;
 }
-.kb-actions {
-  display: flex;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.kb-card:hover .kb-actions {
-  opacity: 1;
-}
+/* 让整行 hover 高亮 + 光标变手，暗示可点 */
+:deep(.el-table__row) { cursor: pointer; }
 </style>
