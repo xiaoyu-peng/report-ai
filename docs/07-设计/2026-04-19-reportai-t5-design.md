@@ -344,3 +344,18 @@ Tiptap `BubbleMenu` 在选中段落时浮起 4 个图标按钮：
 | 段落级 SSE 多通道并发问题 | 降级为顺序生成（一章完再下一章） |
 | LibreOffice PDF 导出环境依赖 | 降级为前端 jsPDF 截图导出 |
 | Doubao 不稳输出 [CITE:...] | 改为后端二次召回比对 + 自动注入引用 |
+
+---
+
+## 12. 交付资产清单（与赛题硬性要求一一对应）
+
+| 赛题要求 | 交付物位置 | 备注 |
+| --- | --- | --- |
+| ① 可直接打开使用的完整 Web 系统（5 模块） | `report-ai/` 全栈 + `report-ai/start.sh` | `cp .env.example .env` → 填 key → `./start.sh --seed`；首页 admin/admin123；详见 `report-ai/README.md` |
+| ② 3 份不同主题的完整报告（含引用来源标注） | DB `report` 表，由 `scripts/demo-deliverables.sh` 末尾打印 id；前端「报告库」直接看 | 主题：政策影响（AI+制造）/ 传播分析（五一出行）/ 行业分析（2026 中国 AI），均带 RAG 引用 `[n]` |
+| ③ 3 篇参考报告 × 4 种改写模式 | 上述 3 份各跑 4 模式（DATA_UPDATE / ANGLE_SHIFT / EXPAND / STYLE_SHIFT），每次产出新 `report_version` | 共 3 × 4 = 12 个 rewrite 版本 |
+| ④ ≥1 个续写演示（从参考稿续写新章节） | 首份报告额外 1 个 CONTINUATION 版本（"风险与对策"） | 续写不替换原稿，追加在末尾 |
+| ⑤ 改写前后对比展示（修订模式视图） | 报告详情页「版本对比」tab，三色词级 diff（绿增 / 红删 / 黄改） | 任选 v1↔v2 演示 |
+| ⑥ 设计说明文档 + AI 工具使用日志 | 本文件 + `docs/06-审计与演示/AI工具使用日志.md` | 现场脚本：`docs/06-审计与演示/2026-04-20-现场演示脚本.md` |
+
+> 交付数据复现命令：在 `report-ai/` 目录执行 `bash scripts/demo-deliverables.sh`，约 15 分钟生成 3 份报告 × 5 个版本 + 1 续写。
