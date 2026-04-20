@@ -556,6 +556,42 @@
 
     <!-- Right: Traceability + Quality Panel -->
     <div v-if="currentReportId && content" class="citations-panel">
+      <!-- 数据来源总览：评委/用户验证"报告基于什么源头写出来的" -->
+      <el-card v-if="dataSources" class="sources-card" shadow="never">
+        <div class="sources-head">
+          <el-icon><DataLine /></el-icon>
+          <span>本次数据来源</span>
+          <el-tag size="small" type="success" effect="light">
+            {{ (dataSources.ragHits || 0) + (dataSources.mcpSections?.length || 0) }} 源
+          </el-tag>
+        </div>
+        <div class="sources-grid">
+          <div class="source-chip" :class="{ muted: !dataSources.ragHits }">
+            <span class="chip-icon kb">📚</span>
+            <div class="chip-body">
+              <div class="chip-title">知识库 RAG</div>
+              <div class="chip-sub">{{ dataSources.ragHits || 0 }} 条命中
+                <span v-if="dataSources.kbId"> · KB #{{ dataSources.kbId }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-for="sec in dataSources.mcpSections || []"
+               :key="sec"
+               class="source-chip"
+               :class="{ tavily: /tavily|web/i.test(sec) }">
+            <span class="chip-icon">{{ sourceIcon(sec) }}</span>
+            <div class="chip-body">
+              <div class="chip-title">{{ sec }}</div>
+              <div class="chip-sub">{{ sourceProvider(sec) }}</div>
+            </div>
+          </div>
+          <div v-if="!dataSources.ragHits && !(dataSources.mcpSections?.length)"
+               class="source-empty">
+            本次生成未触发外部数据源（仅依赖模板风格与模型内建知识）
+          </div>
+        </div>
+      </el-card>
+
       <el-card class="citations-card">
         <el-tabs v-model="rightTab" class="right-tabs">
           <!-- Tab 1: 引用溯源 -->
@@ -759,7 +795,8 @@ import {
   SetUp,
   Promotion,
   Aim,
-  Refresh
+  Refresh,
+  DataLine
 } from '@element-plus/icons-vue'
 import { getKnowledgeBases, type KnowledgeBase } from '@/api/knowledge'
 import {
@@ -790,6 +827,19 @@ interface ChunkHit {
   pageEnd?: number | null
   content: string
   score: number
+}
+
+/** 根据数据源名字推回图标；晴天 MCP 用 🌤️，Tavily 用 🌐，其他兜底通用图标。 */
+function sourceIcon(sec: string): string {
+  if (!sec) return '🔗'
+  if (/tavily|web/i.test(sec)) return '🌐'
+  if (/舆情|情感|声量|热门|事件|传播|渠道|词云|热词|演化/i.test(sec)) return '🌤️'
+  if (/相关文章|article-search|文章/i.test(sec)) return '🔎'
+  return '🧩'
+}
+function sourceProvider(sec: string): string {
+  if (/tavily|web/i.test(sec)) return 'Tavily Web'
+  return '晴天 MCP'
 }
 
 /** 根据 fileType 选溯源卡的 emoji 图标。 */
@@ -839,6 +889,9 @@ const templates = ref<Template[]>([])
 // 引用溯源状态 —— 后端通过 SSE chunks 事件推送 RAG top-k 命中列表。
 const chunks = ref<ChunkHit[]>([])
 const highlightedCite = ref<number | null>(null)
+
+// 数据源汇总 —— 后端 SSE sources 事件，展示 RAG/晴天MCP/Tavily 各自命中量，方便评委核验
+const dataSources = ref<DataSourcesPayload | null>(null)
 
 // 角标 hover 预览浮层（Granola 式），用 teleport 到 body 以脱离 overflow 截断
 const citePopover = ref<{ chunk: ChunkHit, x: number, y: number } | null>(null)
@@ -959,9 +1012,17 @@ onBeforeUnmount(() => {
   activeController?.abort()
 })
 
+interface DataSourcesPayload {
+  ragHits: number
+  kbId: number | null
+  mcpSections: string[]
+  tavilyHits: number
+}
+
 interface SseHandlers {
   onToken?: (payload: string) => void
   onChunks?: (hits: ChunkHit[]) => void
+  onSources?: (sources: DataSourcesPayload) => void
   onProgress?: (step: string, stepIndex: number, totalSteps: number) => void
   onDone?: (payload: string) => void
   onError?: (msg: string) => void
@@ -1010,6 +1071,15 @@ async function consumeSseStream(response: Response, handlers: SseHandlers): Prom
           handlers.onChunks(Array.isArray(parsed) ? parsed : [])
         } catch (e) {
           console.warn('SSE chunks payload parse failed:', e)
+        }
+        return
+      }
+      case 'sources': {
+        if (!handlers.onSources) return
+        try {
+          handlers.onSources(JSON.parse(data))
+        } catch (e) {
+          console.warn('SSE sources payload parse failed:', e)
         }
         return
       }
@@ -1072,6 +1142,7 @@ async function handleGenerate() {
   generating.value = true
   content.value = ''
   chunks.value = []
+  dataSources.value = null
   qualityReport.value = null // 新报告产生，旧的质检结果就过时了
   rightTab.value = 'citations'
   currentReportId.value = null
@@ -1132,6 +1203,7 @@ async function handleGenerate() {
         })
       },
       onChunks: (hits) => { chunks.value = hits },
+      onSources: (s) => { dataSources.value = s },
       onProgress: (step, stepIndex, totalSteps) => {
         progressStep.value = { step, stepIndex, totalSteps }
       },
@@ -1269,6 +1341,7 @@ async function handleRewrite(mode: RewriteMode) {
         })
       },
       onChunks: (hits) => { chunks.value = hits },
+      onSources: (s) => { dataSources.value = s },
       onError: (msg) => { streamError = msg || '改写失败' }
     })
 
@@ -1809,6 +1882,68 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   display: flex;
   gap: 20px;
   height: calc(100vh - 140px);
+}
+
+/* 数据来源卡 —— 评委可直接看"本次引用/抓取覆盖面" */
+.sources-card {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.sources-card :deep(.el-card__body) {
+  padding: 12px 14px;
+}
+.sources-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+.sources-head .el-icon { color: #6366f1; }
+.sources-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.source-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  transition: background 0.15s;
+}
+.source-chip:hover { background: #eef2ff; }
+.source-chip.muted { opacity: 0.55; }
+.source-chip.tavily { border-left: 3px solid #0ea5e9; }
+.chip-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+.chip-icon.kb { background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.25); }
+.chip-body { min-width: 0; flex: 1; }
+.chip-title { color: #0f172a; font-weight: 500; }
+.chip-sub { color: #64748b; font-size: 11.5px; }
+.source-empty {
+  padding: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
 }
 .config-panel {
   width: 360px;

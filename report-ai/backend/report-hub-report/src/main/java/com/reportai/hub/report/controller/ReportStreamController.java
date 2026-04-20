@@ -62,6 +62,7 @@ public class ReportStreamController {
                                     sendSafely(emitter, "progress", "{\"step\":\"AI 撰写报告\",\"stepIndex\":4,\"totalSteps\":5}");
                                     sendSafely(emitter, "chunks", toChunksJson(hits));
                                 },
+                                srcs -> sendSafely(emitter, "sources", toSourcesJson(srcs)),
                                 onToken,
                                 () -> {
                                     sendSafely(emitter, "progress", "{\"step\":\"完稿与版本保存\",\"stepIndex\":5,\"totalSteps\":5}");
@@ -192,6 +193,25 @@ public class ReportStreamController {
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    /**
+     * 序列化"本次数据来源"汇总，payload 示例：
+     * {"ragHits":7,"kbId":1,"mcpSections":["相关文章搜索","热门词云","Tavily Web 搜索"],"tavilyHits":1}
+     */
+    private String toSourcesJson(ReportGenerationService.DataSources s) {
+        if (s == null) return "{}";
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("ragHits", s.ragHits() == null ? 0 : s.ragHits());
+        payload.put("kbId", s.kbId());
+        payload.put("mcpSections", s.mcpSections() == null ? List.of() : s.mcpSections());
+        payload.put("tavilyHits", s.tavilyHits() == null ? 0 : s.tavilyHits());
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            log.warn("serialize sources failed: {}", e.getMessage());
+            return "{}";
+        }
     }
 
     @FunctionalInterface

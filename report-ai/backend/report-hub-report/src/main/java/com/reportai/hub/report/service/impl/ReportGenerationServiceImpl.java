@@ -95,6 +95,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     @Override
     public void streamGenerate(Long reportId, Long operatorId,
                                Consumer<List<RagChunkHit>> onChunks,
+                               Consumer<DataSources> onSources,
                                Consumer<String> onToken, Runnable onDone) {
         Report report = reportMapper.selectById(reportId);
         if (report == null) throw new BusinessException("报告不存在: " + reportId);
@@ -134,6 +135,25 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         String fullContext = ragContext;
         if (mcpResult.text() != null && !mcpResult.text().isBlank()) {
             fullContext = ragContext + "\n\n--- 以下是来自晴天舆情 MCP 的实时数据 ---\n" + mcpResult.text();
+        }
+
+        // 2.6 数据源汇总推给前端 sources 事件：评委/用户能直接看到 "本次用了多少 KB/MCP/Web"
+        if (onSources != null) {
+            try {
+                List<String> mcpSections = mcpResult.sections() == null
+                        ? java.util.List.of() : mcpResult.sections();
+                int tavilyHits = (int) mcpSections.stream()
+                        .filter(s -> s != null && s.toLowerCase().contains("tavily")).count();
+                // Tavily 以 section 名称记录（buildMcpContext 里加的是 "Tavily Web 搜索"）；
+                // RAG hits 直接用列表大小；mcpSections 对 UI 而言就是"用了哪些工具"的标签。
+                onSources.accept(DataSources.of(
+                        hits == null ? 0 : hits.size(),
+                        report.getKbId(),
+                        mcpSections,
+                        tavilyHits));
+            } catch (RuntimeException ex) {
+                log.warn("push sources event failed: {}", ex.getMessage());
+            }
         }
 
         // 3. 组 prompt（深度三档把目标字数提示拼到 user 末尾）
