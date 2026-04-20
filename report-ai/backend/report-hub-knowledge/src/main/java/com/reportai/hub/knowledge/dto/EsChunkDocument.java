@@ -1,14 +1,11 @@
 package com.reportai.hub.knowledge.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 @Data
@@ -26,6 +23,10 @@ public class EsChunkDocument {
     private Integer pageEnd;
 
     private String createdAt;
+
+    /** ES `_score`：只在查询返回时被 EsChunkService 填充，不写入索引，不参与反序列化。 */
+    @JsonIgnore
+    private transient Double score;
 
     private static final DateTimeFormatter ES_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 

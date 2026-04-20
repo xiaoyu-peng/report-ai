@@ -135,14 +135,7 @@ public class EsChunkService {
                 EsChunkDocument.class
             );
 
-            List<EsChunkDocument> results = new ArrayList<>();
-            for (Hit<EsChunkDocument> hit : response.hits().hits()) {
-                if (hit.source() != null) {
-                    results.add(hit.source());
-                }
-            }
-            log.debug("ES search returned {} results for kbId={}, query={}", results.size(), kbId, query);
-            return results;
+            return collectHits(response, "ES search kbId=" + kbId + " query=" + query);
         } catch (IOException e) {
             log.error("ES search failed: {}", e.getMessage());
             return List.of();
@@ -211,17 +204,23 @@ public class EsChunkService {
                 EsChunkDocument.class
             );
 
-            List<EsChunkDocument> results = new ArrayList<>();
-            for (Hit<EsChunkDocument> hit : response.hits().hits()) {
-                if (hit.source() != null) {
-                    results.add(hit.source());
-                }
-            }
-            log.debug("ES search with filters returned {} results", results.size());
-            return results;
+            return collectHits(response, "ES search w/ filters kbId=" + kbId);
         } catch (IOException e) {
             log.error("ES search with filters failed: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /** 把 ES 返回的 hit 列表 + 每条的 `_score` 拉到 EsChunkDocument 里，便于上层计算相关度条。 */
+    private List<EsChunkDocument> collectHits(SearchResponse<EsChunkDocument> response, String debugCtx) {
+        List<EsChunkDocument> results = new ArrayList<>();
+        for (Hit<EsChunkDocument> hit : response.hits().hits()) {
+            EsChunkDocument src = hit.source();
+            if (src == null) continue;
+            src.setScore(hit.score());
+            results.add(src);
+        }
+        log.debug("{} → {} results", debugCtx, results.size());
+        return results;
     }
 }

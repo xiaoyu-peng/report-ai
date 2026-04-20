@@ -112,21 +112,41 @@ public class RagSearchServiceImpl implements RagSearchService {
     private List<RagChunkHit> searchFromEs(Long kbId, String query, List<String> includeKeywords, List<String> excludeKeywords, int topK) {
         log.debug("ES search kb={} topK={} query={}", kbId, topK, query);
         List<EsChunkDocument> esDocs = esChunkService.searchWithIncludeExclude(kbId, query, includeKeywords, excludeKeywords, topK);
+        double maxScore = maxEsScore(esDocs);
         List<RagChunkHit> hits = new ArrayList<>();
         for (EsChunkDocument doc : esDocs) {
-            RagChunkHit hit = new RagChunkHit();
-            hit.setChunkId(doc.getId());
-            hit.setKbId(doc.getKbId());
-            hit.setDocId(doc.getDocId());
-            hit.setFilename(doc.getDocName());
-            hit.setContent(doc.getContent());
-            hit.setChunkIndex(doc.getChunkIndex());
-            hit.setPageStart(doc.getPageStart());
-            hit.setPageEnd(doc.getPageEnd());
-            hit.setScore(1.0);
-            hits.add(hit);
+            hits.add(toHit(doc, maxScore));
         }
         return hits;
+    }
+
+    /**
+     * ES `_score` 是绝对值（通常 5–30），直接给前端相关度条会全部撑满。
+     * 这里按本批结果内的 max 做线性归一化，top hit = 1.0，其他按比例缩；
+     * 如果没有 score（空结果 / ES 没返回 score），兜底 1.0 保持旧行为。
+     */
+    private RagChunkHit toHit(EsChunkDocument doc, double maxScore) {
+        RagChunkHit hit = new RagChunkHit();
+        hit.setChunkId(doc.getId());
+        hit.setKbId(doc.getKbId());
+        hit.setDocId(doc.getDocId());
+        hit.setFilename(doc.getDocName());
+        hit.setContent(doc.getContent());
+        hit.setChunkIndex(doc.getChunkIndex());
+        hit.setPageStart(doc.getPageStart());
+        hit.setPageEnd(doc.getPageEnd());
+        Double raw = doc.getScore();
+        double normalized = (raw == null || maxScore <= 0) ? 1.0 : Math.max(0.0, Math.min(raw / maxScore, 1.0));
+        hit.setScore(normalized);
+        return hit;
+    }
+
+    private double maxEsScore(List<EsChunkDocument> docs) {
+        double max = 0.0;
+        for (EsChunkDocument d : docs) {
+            if (d.getScore() != null && d.getScore() > max) max = d.getScore();
+        }
+        return max;
     }
 
     @Override
@@ -140,23 +160,15 @@ public class RagSearchServiceImpl implements RagSearchService {
 
         log.debug("RAG enhanced kbs={} excluded={}", q.getKbIds(), excluded.size());
 
+        // 多 KB 合并前先各自归一化，避免不同 KB 的 _score 绝对量级差异影响排序条。
         List<RagChunkHit> allHits = new ArrayList<>();
         for (Long kbId : q.getKbIds()) {
             List<EsChunkDocument> esDocs = esChunkService.searchWithIncludeExclude(
                 kbId, q.getQuery(), q.getIncludeKeywords(), q.getExcludeKeywords(), topK);
+            double maxScore = maxEsScore(esDocs);
             for (EsChunkDocument doc : esDocs) {
                 if (excluded.contains(doc.getId())) continue;
-                RagChunkHit hit = new RagChunkHit();
-                hit.setChunkId(doc.getId());
-                hit.setKbId(doc.getKbId());
-                hit.setDocId(doc.getDocId());
-                hit.setFilename(doc.getDocName());
-                hit.setContent(doc.getContent());
-                hit.setChunkIndex(doc.getChunkIndex());
-                hit.setPageStart(doc.getPageStart());
-                hit.setPageEnd(doc.getPageEnd());
-                hit.setScore(1.0);
-                allHits.add(hit);
+                allHits.add(toHit(doc, maxScore));
             }
         }
 
