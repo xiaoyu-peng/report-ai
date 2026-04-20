@@ -66,7 +66,7 @@
               <TiptapEditor :model-value="report.content || ''" @update:model-value="onTiptapEdit" :report-id="report.id" />
             </div>
           </el-tab-pane>
-          <el-tab-pane label="覆盖度体检（T5）" name="coverage">
+          <el-tab-pane label="覆盖度体检" name="coverage">
             <CoverageDashboard v-if="report" :report-id="report.id" />
           </el-tab-pane>
           <el-tab-pane label="章节流式" name="sections">
@@ -757,7 +757,9 @@ function handleCiteClick(e: MouseEvent) {
 }
 
 function goEdit() {
-  router.push('/workspace')
+  // 以前 push('/workspace') 会把用户扔到新建报告页 —— "编辑"语义完全错了。
+  // 当前页的 Tiptap Tab 就是带 AI 浮起工具栏的段落级编辑器，切过去即可。
+  activeTab.value = 'tiptap'
 }
 
 async function handleExport(kind: string) {

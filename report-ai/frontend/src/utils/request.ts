@@ -27,13 +27,19 @@ instance.interceptors.request.use(
 
 instance.interceptors.response.use(
   (response: AxiosResponse) => {
-    const { data } = response
-    if (data.code === 200) {
-      return data
-    } else {
-      ElMessage.error(data.message || '请求失败')
-      return Promise.reject(new Error(data.message || '请求失败'))
+    // 二进制响应（blob/arraybuffer）不走 Result 包装 —— 比如导出 Word/PDF。
+    // 以前硬读 data.code 会把合法的 Blob 当成"code 不等于 200"直接 reject，触发导出失败。
+    const rt = response.config?.responseType
+    if (rt === 'blob' || rt === 'arraybuffer' || rt === 'stream') {
+      return response.data
     }
+    const { data } = response
+    if (data && data.code === 200) {
+      return data
+    }
+    const msg = data?.message || '请求失败'
+    ElMessage.error(msg)
+    return Promise.reject(new Error(msg))
   },
   (error: AxiosError) => {
     if (error.response) {
