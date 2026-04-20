@@ -10,7 +10,7 @@
         >
           <el-button :loading="analyzing">
             <el-icon><Upload /></el-icon>
-            从文件分析风格
+            上传参考报告（解析风格+正文）
           </el-button>
         </el-upload>
         <el-button type="primary" @click="openCreateDialog()">
@@ -20,93 +20,86 @@
       </div>
     </div>
 
-    <el-row :gutter="16" v-loading="loading">
-      <el-col v-for="tpl in list" :key="tpl.id" :span="8">
-        <el-card class="tpl-card" shadow="hover">
-          <div class="tpl-header">
-            <div class="tpl-icon" :style="{ background: getTplColor(tpl.id).bg, color: getTplColor(tpl.id).fg }">
-              <el-icon :size="22"><DocumentCopy /></el-icon>
+    <p class="page-hint">
+      模板是「以稿写稿」的<strong>风格样本</strong>——上传参考报告后，后端用 Tika 抽出原文 + LLM 提取开头段落、章节结构、语气和高频金句，<strong>完整原文一并留存</strong>；生成新报告时 LLM 参考它复现写作风格。（知识库管的是事实素材，这里管的是写法。）
+    </p>
+
+    <el-table
+      v-loading="loading"
+      :data="list"
+      row-key="id"
+      stripe
+      style="width: 100%"
+      empty-text="暂无模板，点击右上角上传参考报告或新建"
+      @row-click="(row) => previewTemplate(row)"
+    >
+      <el-table-column label="名称" min-width="200">
+        <template #default="{ row }">
+          <div class="tpl-name-cell">
+            <div class="tpl-icon" :style="getTplColor(row.id)">
+              <el-icon :size="14"><DocumentCopy /></el-icon>
             </div>
-            <el-tag v-if="tpl.isBuiltin" type="warning" size="small" effect="light">内置</el-tag>
+            <span class="tpl-name-text">{{ row.name }}</span>
+            <el-tag v-if="row.isBuiltin" type="warning" size="small" effect="plain">内置</el-tag>
           </div>
-          <div class="tpl-name">{{ tpl.name }}</div>
-          <div class="tpl-desc">{{ tpl.description || '暂无描述' }}</div>
-          <div class="tpl-style-preview" v-if="tpl.styleDescription || tpl.style">
-            <div class="style-label">风格</div>
-            <div class="style-text">{{ tpl.styleDescription || tpl.style }}</div>
-          </div>
-          <div class="tpl-structure-preview" v-if="tpl.structure || tpl.structureJson">
-            <div class="structure-label">结构</div>
-            <div class="structure-tags">
-              <el-tag
-                v-for="(sec, si) in parseStructure(tpl.structure || tpl.structureJson)"
-                :key="si"
-                size="small"
-                effect="plain"
-                type="info"
-              >
-                {{ sec }}
-              </el-tag>
-            </div>
-          </div>
-          <div class="tpl-meta" v-if="tpl.category">
-            <el-tag size="small" type="info" effect="plain">{{ tpl.category }}</el-tag>
-          </div>
-          <div class="tpl-actions">
-            <el-button size="small" @click="previewTemplate(tpl)">预览</el-button>
+        </template>
+      </el-table-column>
+      <el-table-column label="风格摘要" min-width="220" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="style-cell">{{ row.styleDescription || row.style || '—' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="正文预览" min-width="280">
+        <template #default="{ row }">
+          <div class="preview-cell">{{ truncate(row.content, 120) }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="字数" width="90" align="right">
+        <template #default="{ row }">{{ (row.content?.length ?? 0).toLocaleString() }}</template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="160">
+        <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="170" fixed="right">
+        <template #default="{ row }">
+          <div class="row-actions" @click.stop>
+            <el-button size="small" type="primary" link @click="previewTemplate(row)">查看</el-button>
             <el-button
-              v-if="!tpl.isBuiltin"
+              v-if="!row.isBuiltin"
               size="small"
               type="danger"
-              plain
-              @click="handleDelete(tpl)"
+              link
+              @click="handleDelete(row)"
             >
-              <el-icon><Delete /></el-icon>
               删除
             </el-button>
           </div>
-        </el-card>
-      </el-col>
-      <el-col v-if="!loading && list.length === 0" :span="24">
-        <el-empty description="暂无模板，点击右上角新建或上传文件分析风格" />
-      </el-col>
-    </el-row>
+        </template>
+      </el-table-column>
+    </el-table>
 
-    <!-- 新建模板对话框 -->
-    <el-dialog
-      v-model="showCreateDialog"
-      :title="dialogTitle"
-      width="680px"
-      @closed="resetForm"
-    >
+    <!-- 新建（手动）对话框 -->
+    <el-dialog v-model="showCreateDialog" title="新建模板" width="680px" @closed="resetForm">
       <el-form ref="formRef" :model="createForm" :rules="rules" label-width="100px">
         <el-form-item label="模板名称" prop="name">
-          <el-input v-model="createForm.name" placeholder="请输入模板名称" maxlength="50" show-word-limit />
+          <el-input v-model="createForm.name" placeholder="如：专题日报 / 行业研报" maxlength="50" show-word-limit />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
+        <el-form-item label="描述">
           <el-input
             v-model="createForm.description"
             type="textarea"
             :rows="2"
-            placeholder="一句话说明模板用途（可选）"
+            placeholder="一句话说明适用场景"
             maxlength="200"
             show-word-limit
           />
         </el-form-item>
-        <el-form-item label="风格描述" prop="styleDescription">
-          <el-input
-            v-model="createForm.styleDescription"
-            type="textarea"
-            :rows="4"
-            placeholder="AI 分析出的风格描述，可手动编辑"
-          />
-        </el-form-item>
-        <el-form-item label="模板内容" prop="content">
+        <el-form-item label="模板正文" prop="content">
           <el-input
             v-model="createForm.content"
             type="textarea"
-            :rows="6"
-            placeholder="模板正文 / 结构大纲（可选）"
+            :rows="10"
+            placeholder="粘贴参考报告正文，保存时后端会自动跑一次 LLM 风格分析，把摘要+结构写入模板"
           />
         </el-form-item>
       </el-form>
@@ -117,18 +110,39 @@
     </el-dialog>
 
     <!-- 预览对话框 -->
-    <el-dialog v-model="showPreviewDialog" :title="previewTpl?.name || '模板预览'" width="720px">
-      <div class="preview-block">
-        <div class="preview-label">描述</div>
-        <div class="preview-content">{{ previewTpl?.description || '暂无' }}</div>
-      </div>
-      <div class="preview-block">
-        <div class="preview-label">风格</div>
-        <div class="preview-content">{{ previewTpl?.style || previewTpl?.styleDescription || '暂无' }}</div>
-      </div>
-      <div class="preview-block">
-        <div class="preview-label">结构 / 内容</div>
-        <div class="preview-content preview-pre">{{ previewTpl?.structure || previewTpl?.content || '暂无' }}</div>
+    <el-dialog v-model="showPreviewDialog" :title="previewTpl?.name || '模板预览'" width="860px" top="6vh">
+      <div v-if="previewTpl" class="preview-wrap">
+        <div class="preview-meta">
+          <div class="meta-item">
+            <span class="meta-key">风格摘要</span>
+            <span class="meta-val">{{ previewTpl.styleDescription || previewTpl.style || '—' }}</span>
+          </div>
+          <div class="meta-item" v-if="previewTpl.description">
+            <span class="meta-key">描述</span>
+            <span class="meta-val">{{ previewTpl.description }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-key">字数</span>
+            <span class="meta-val">{{ (previewTpl.content?.length ?? 0).toLocaleString() }} 字</span>
+          </div>
+        </div>
+
+        <el-tabs v-model="previewTab" class="preview-tabs">
+          <el-tab-pane label="原文正文" name="content">
+            <div class="preview-content preview-pre">{{ previewTpl.content || '暂无正文' }}</div>
+          </el-tab-pane>
+          <el-tab-pane label="结构大纲" name="structure">
+            <div class="structure-tags" v-if="structureSections.length">
+              <el-tag v-for="(s, i) in structureSections" :key="i" size="small" effect="plain" type="info">
+                {{ s }}
+              </el-tag>
+            </div>
+            <div v-else class="preview-empty">结构未解析</div>
+          </el-tab-pane>
+          <el-tab-pane label="风格 JSON" name="raw">
+            <pre class="preview-content preview-json">{{ prettyJson(previewTpl.structureJson || previewTpl.structure) }}</pre>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </el-dialog>
   </div>
@@ -137,51 +151,46 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRawFile } from 'element-plus'
-import { Plus, Upload, Delete, DocumentCopy } from '@element-plus/icons-vue'
 import axios from 'axios'
-import { getTemplates, createTemplate, deleteTemplate } from '@/api/report'
+import { getTemplates, createTemplate, deleteTemplate, type Template } from '@/api/report'
 import { useUserStore } from '@/stores/user'
 
-interface TemplateItem {
-  id: number
-  name: string
-  description?: string
-  category?: string
-  structure?: string
-  style?: string
-  styleDescription?: string
-  structureJson?: string
-  content?: string
-  isBuiltin?: boolean
-  createdAt?: string
-}
-
-const list = ref<TemplateItem[]>([])
+const list = ref<Template[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 const analyzing = ref(false)
 const showCreateDialog = ref(false)
 const showPreviewDialog = ref(false)
-const previewTpl = ref<TemplateItem | null>(null)
+const previewTpl = ref<Template | null>(null)
+const previewTab = ref('content')
 const formRef = ref<FormInstance>()
 
 const createForm = reactive({
   name: '',
   description: '',
-  styleDescription: '',
   content: ''
 })
-
-const dialogTitle = computed(() =>
-  createForm.styleDescription ? '新建模板（已导入 AI 风格）' : '新建模板'
-)
 
 const rules: FormRules = {
   name: [
     { required: true, message: '请输入模板名称', trigger: 'blur' },
     { min: 2, max: 50, message: '名称长度为 2-50 个字符', trigger: 'blur' }
-  ]
+  ],
+  content: [{ required: true, message: '请粘贴参考正文', trigger: 'blur' }]
 }
+
+const structureSections = computed(() => {
+  if (!previewTpl.value) return []
+  const raw = previewTpl.value.structureJson || previewTpl.value.structure
+  if (!raw) return []
+  try {
+    const obj = JSON.parse(raw)
+    if (Array.isArray(obj.section_hierarchy)) return obj.section_hierarchy
+    if (Array.isArray(obj.sections)) return obj.sections
+    if (Array.isArray(obj)) return obj.map(String)
+  } catch {}
+  return []
+})
 
 onMounted(fetchList)
 
@@ -205,7 +214,6 @@ function openCreateDialog() {
 function resetForm() {
   createForm.name = ''
   createForm.description = ''
-  createForm.styleDescription = ''
   createForm.content = ''
   formRef.value?.clearValidate()
 }
@@ -217,28 +225,24 @@ async function handleAnalyzeUpload(file: UploadRawFile) {
     form.append('file', file)
     const userStore = useUserStore()
     const token = userStore.token || localStorage.getItem('token')
-    // /analyze 是 JSON 版；/analyze-file 是 multipart 版（后端会跑 Tika 抽文本 + LLM 风格分析）
+    // /analyze-file 后端会：Tika 抽文本 → LLM 风格分析 → 落库（name/description/content/styleDescription/structureJson 全齐）
+    // 也就是说一次调用就落好模板，不需要前端再起保存对话框
     const resp = await axios.post('/api/v1/templates/analyze-file', form, {
       headers: {
         'Content-Type': 'multipart/form-data',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      timeout: 120000
+      timeout: 180000
     })
-    const payload = resp.data?.data ?? resp.data
-    const styleDesc =
-      (typeof payload === 'string' ? payload : payload?.styleDescription || payload?.style || payload?.description) || ''
-    createForm.styleDescription = styleDesc
-    createForm.name = createForm.name || (file.name?.replace(/\.[^.]+$/, '') ?? '')
-    showCreateDialog.value = true
-    ElMessage.success('风格分析完成，已填充到新建模板表单')
+    const saved = resp.data?.data ?? resp.data
+    ElMessage.success(`已解析并保存模板：${saved?.name || file.name}`)
+    await fetchList()
   } catch (e: any) {
     console.error('分析风格失败:', e)
     ElMessage.error(e?.response?.data?.message || '分析风格失败')
   } finally {
     analyzing.value = false
   }
-  // 阻止 ElUpload 自动上传
   return false
 }
 
@@ -248,13 +252,13 @@ async function handleCreate() {
 
   submitting.value = true
   try {
+    // 后端 CreateDto 接收 { name, description, content }，content 必填；LLM 风格分析由后端发起
     await createTemplate({
       name: createForm.name,
       description: createForm.description,
-      style: createForm.styleDescription,
-      structure: createForm.content
+      content: createForm.content
     } as any)
-    ElMessage.success('创建成功')
+    ElMessage.success('创建成功，已触发风格分析')
     showCreateDialog.value = false
     fetchList()
   } catch (e) {
@@ -264,7 +268,7 @@ async function handleCreate() {
   }
 }
 
-async function handleDelete(tpl: TemplateItem) {
+async function handleDelete(tpl: Template) {
   try {
     await ElMessageBox.confirm(
       `确认删除模板「${tpl.name}」？此操作不可恢复。`,
@@ -279,30 +283,43 @@ async function handleDelete(tpl: TemplateItem) {
   }
 }
 
-function previewTemplate(tpl: TemplateItem) {
+function previewTemplate(tpl: Template) {
   previewTpl.value = tpl
+  previewTab.value = 'content'
   showPreviewDialog.value = true
 }
 
-function getTplColor(id: number): { bg: string; fg: string } {
+function getTplColor(id: number): { background: string; color: string } {
   const colors = [
-    { bg: 'rgba(99, 102, 241, 0.1)', fg: '#6366f1' },
-    { bg: 'rgba(16, 185, 129, 0.1)', fg: '#10b981' },
-    { bg: 'rgba(245, 158, 11, 0.1)', fg: '#f59e0b' },
-    { bg: 'rgba(239, 68, 68, 0.1)', fg: '#ef4444' },
-    { bg: 'rgba(139, 92, 246, 0.1)', fg: '#8b5cf6' }
+    { background: 'rgba(99, 102, 241, 0.12)', color: '#6366f1' },
+    { background: 'rgba(16, 185, 129, 0.12)', color: '#10b981' },
+    { background: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b' },
+    { background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444' },
+    { background: 'rgba(139, 92, 246, 0.12)', color: '#8b5cf6' },
+    { background: 'rgba(14, 165, 233, 0.12)', color: '#0ea5e9' }
   ]
   return colors[(id - 1) % colors.length]
 }
 
-function parseStructure(raw?: string): string[] {
-  if (!raw) return []
+function truncate(s: string | undefined, n: number): string {
+  if (!s) return '—'
+  const collapsed = s.replace(/\s+/g, ' ').trim()
+  return collapsed.length > n ? collapsed.slice(0, n) + '…' : collapsed
+}
+
+function formatTime(t?: string): string {
+  if (!t) return '—'
+  const s = t.replace('T', ' ')
+  return s.length > 16 ? s.substring(0, 16) : s
+}
+
+function prettyJson(s?: string): string {
+  if (!s) return '暂无'
   try {
-    const obj = JSON.parse(raw)
-    if (obj.sections && Array.isArray(obj.sections)) return obj.sections
-    if (Array.isArray(obj)) return obj.map(String)
-  } catch {}
-  return raw.split(/[,，\n]/).map(s => s.trim()).filter(Boolean)
+    return JSON.stringify(JSON.parse(s), null, 2)
+  } catch {
+    return s
+  }
 }
 </script>
 
@@ -314,7 +331,7 @@ function parseStructure(raw?: string): string[] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 .page-title {
   font-size: 20px;
@@ -327,111 +344,123 @@ function parseStructure(raw?: string): string[] {
   gap: 10px;
   align-items: center;
 }
-.tpl-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  transition: all 0.25s ease;
-  min-height: 200px;
+.page-hint {
+  color: #64748b;
+  font-size: 13px;
+  background: #f5f3ff;
+  border-left: 3px solid #6366f1;
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 0 0 16px 0;
+  line-height: 1.7;
 }
-.tpl-card:hover {
-  transform: translateY(-2px);
+.page-hint strong {
+  color: #4338ca;
 }
-.tpl-header {
+
+.tpl-name-cell {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  gap: 8px;
+  min-width: 0;
 }
 .tpl-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.tpl-name {
-  font-size: 16px;
+.tpl-name-text {
   font-weight: 600;
   color: #0f172a;
-  margin: 8px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.tpl-desc {
+.style-cell {
+  color: #475569;
+  font-size: 13px;
+}
+.preview-cell {
   color: #64748b;
   font-size: 13px;
-  min-height: 40px;
   line-height: 1.6;
-  margin-bottom: 10px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.tpl-style-preview {
-  margin-bottom: 8px;
-  padding: 8px 10px;
+.row-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+:deep(.el-table__row) { cursor: pointer; }
+
+.preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.preview-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 12px 14px;
   background: #f8fafc;
   border-radius: 6px;
-  border-left: 3px solid #6366f1;
+  border: 1px solid #e2e8f0;
 }
-.style-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6366f1;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-}
-.style-text {
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font-size: 12px;
-  color: #475569;
-  line-height: 1.5;
 }
-.tpl-structure-preview {
-  margin-bottom: 10px;
-}
-.structure-label {
-  font-size: 11px;
+.meta-key {
+  color: #94a3b8;
   font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  letter-spacing: 0.3px;
+}
+.meta-val {
+  color: #0f172a;
+  font-size: 13px;
+}
+.preview-tabs {
+  margin-top: 4px;
+}
+.preview-content {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.8;
+  background: #fafbfc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 14px 16px;
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.preview-pre {
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+.preview-json {
+  font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  white-space: pre;
 }
 .structure-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
+  padding: 8px 0;
 }
-.tpl-meta {
-  margin-bottom: 12px;
-}
-.tpl-actions {
-  display: flex;
-  gap: 8px;
-}
-.preview-block {
-  margin-bottom: 14px;
-}
-.preview-label {
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 6px;
-}
-.preview-content {
-  color: #475569;
-  font-size: 14px;
-  line-height: 1.7;
-  background: #f7f8fa;
-  border-radius: 6px;
-  padding: 10px 12px;
-  max-height: 240px;
-  overflow: auto;
-}
-.preview-pre {
-  white-space: pre-wrap;
-  font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
+.preview-empty {
+  color: #94a3b8;
   font-size: 13px;
+  padding: 16px 0;
+  text-align: center;
 }
 </style>

@@ -20,9 +20,17 @@ export interface Template {
   name: string
   description?: string
   category?: string
+  /** 原文件 Tika 抽出的全文，做「以稿写稿」仿写的风格参考样本 */
+  content?: string
+  /** LLM 产出的人类可读风格摘要（如「政策影响 · 语气研判 · 数据密度中」） */
+  styleDescription?: string
+  /** LLM 产出的结构化风格 JSON（section_hierarchy / tone / signature_phrases…） */
+  structureJson?: string
+  isBuiltin?: number
+  createdAt?: string
+  /** 兼容历史字段名 */
   structure?: string
   style?: string
-  createdAt?: string
 }
 
 export interface ReportVersion {

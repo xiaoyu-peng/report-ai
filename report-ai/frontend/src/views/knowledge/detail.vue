@@ -58,15 +58,15 @@
 
     <el-card v-if="searchResults.length === 0" shadow="never" class="table-card">
       <el-table :data="documents" v-loading="loading" style="width: 100%">
-        <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip>
+        <el-table-column prop="filename" label="文件名" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-icon class="file-icon"><Document /></el-icon>
-            <span>{{ row.filename }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="fileType" label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">{{ row.fileType?.toUpperCase() || '-' }}</el-tag>
+            <div class="filename-cell">
+              <el-icon class="file-icon"><Document /></el-icon>
+              <span class="filename-text">{{ row.filename }}</span>
+              <el-tag size="small" effect="plain" class="type-tag">
+                {{ shortFileType(row.fileType) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="大小" width="110">
@@ -86,7 +86,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="上传时间" width="180" />
+        <el-table-column label="上传时间" width="170">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openViewer(row, 'view')">查看</el-button>
@@ -395,6 +397,26 @@ function statusLabel(status: string) {
   return map[status] || status || '-'
 }
 
+function shortFileType(ft?: string): string {
+  if (!ft) return '-'
+  // MIME 精简成常用短名（PDF / DOCX / TXT / MD…），原值像
+  // `application/vnd.openxmlformats-officedocument.wordprocessingml.document` 放表格里挤得慌
+  const s = ft.toLowerCase()
+  if (s.includes('pdf')) return 'PDF'
+  if (s.includes('wordprocessingml') || s.endsWith('msword') || s.endsWith('.docx') || s.endsWith('.doc')) return 'DOCX'
+  if (s.includes('markdown') || s.endsWith('.md')) return 'MD'
+  if (s.includes('plain') || s.endsWith('.txt')) return 'TXT'
+  if (s.includes('html')) return 'HTML'
+  const last = s.split('/').pop() || s
+  return last.slice(0, 6).toUpperCase()
+}
+
+function formatTime(t?: string): string {
+  if (!t) return '—'
+  const s = t.replace('T', ' ')
+  return s.length > 16 ? s.substring(0, 16) : s
+}
+
 async function handleUpload(file: File) {
   ElMessage.info('文档上传中，正在解析...')
   try {
@@ -469,6 +491,22 @@ function clearSearch() {
   font-size: 13px;
   border-radius: 4px;
   margin-bottom: 16px;
+}
+.filename-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.filename-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.type-tag {
+  flex-shrink: 0;
 }
 .table-card {
   border-radius: 12px;
