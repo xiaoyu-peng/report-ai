@@ -113,16 +113,49 @@
           <el-form-item label="文件名">
             <el-input v-model="viewerFilename" :disabled="viewerMode === 'view'" />
           </el-form-item>
-          <el-form-item label="正文">
+
+          <!-- 查看态：按 fileType 路由 PDF / DOCX / 文本三种渲染 -->
+          <el-form-item v-if="viewerMode === 'view'" label="预览">
+            <div class="viewer-preview">
+              <!-- PDF / 浏览器原生支持的类型：iframe 直出 -->
+              <iframe
+                v-if="previewKind === 'pdf'"
+                :src="previewUrl"
+                class="preview-iframe"
+                title="document-preview"
+              />
+              <!-- DOCX：后端渲染的 HTML -->
+              <iframe
+                v-else-if="previewKind === 'html'"
+                :srcdoc="previewHtml"
+                class="preview-iframe"
+                title="document-preview"
+              />
+              <!-- 其他格式（txt/md/抓取的网页）：回退为文本块 -->
+              <el-input
+                v-else
+                v-model="viewerContent"
+                type="textarea"
+                :rows="22"
+                readonly
+                resize="vertical"
+                placeholder="（文档正文）"
+              />
+              <div v-if="previewWarn" class="preview-warn">{{ previewWarn }}</div>
+            </div>
+          </el-form-item>
+
+          <!-- 编辑态：仍然是 textarea -->
+          <el-form-item v-else label="正文">
             <el-input
               v-model="viewerContent"
               type="textarea"
               :rows="22"
-              :readonly="viewerMode === 'view'"
               resize="vertical"
               placeholder="（文档正文）"
             />
           </el-form-item>
+
           <div class="viewer-meta" v-if="viewerDoc">
             <el-tag size="small" effect="plain">分块 {{ viewerDoc.chunkCount }}</el-tag>
             <el-tag size="small" effect="plain">{{ formatSize(viewerDoc.fileSize) }}</el-tag>
@@ -146,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -183,20 +216,89 @@ const viewerFilename = ref('')
 const viewerContent = ref('')
 const saving = ref(false)
 
+// 预览分三态：pdf = iframe 原生 / html = 后端 docx→html srcdoc / text = 回退到文本 textarea
+type PreviewKind = 'pdf' | 'html' | 'text'
+const previewKind = ref<PreviewKind>('text')
+const previewUrl = ref('')   // Object URL，用完要 revoke
+const previewHtml = ref('')  // 后端 DOCX → HTML 的全文
+const previewWarn = ref('')  // 「原文件已不保留，回退纯文本」之类的提示
+
+/** 读带鉴权的原文件，生成 Object URL 给 iframe。失败返回空串（前端回退到文本）。 */
+async function fetchBlobAsObjectUrl(docId: number): Promise<string> {
+  const token = localStorage.getItem('token') || ''
+  const resp = await fetch(`/api/v1/knowledge/documents/${docId}/file`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+  if (!resp.ok) throw new Error(`${resp.status}`)
+  const blob = await resp.blob()
+  return URL.createObjectURL(blob)
+}
+
+async function fetchHtmlPreview(docId: number): Promise<string> {
+  const token = localStorage.getItem('token') || ''
+  const resp = await fetch(`/api/v1/knowledge/documents/${docId}/html`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+  if (!resp.ok) throw new Error(`${resp.status}`)
+  return await resp.text()
+}
+
+function releasePreviewUrl() {
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
+}
+
 async function openViewer(row: KnowledgeDocument, mode: 'view' | 'edit') {
   viewerMode.value = mode
   viewerDoc.value = row
   viewerFilename.value = row.filename
   viewerContent.value = ''
+  releasePreviewUrl()
+  previewHtml.value = ''
+  previewWarn.value = ''
+  previewKind.value = 'text'
   viewerVisible.value = true
   viewerLoading.value = true
+
   try {
-    const res = await getDocument(row.id)
-    const full = (res as any).data as KnowledgeDocument
+    // 拉详情（meta + content），两个请求并发
+    const [detailRes] = await Promise.all([getDocument(row.id)])
+    const full = (detailRes as any).data as KnowledgeDocument
     if (full) {
       viewerDoc.value = full
       viewerFilename.value = full.filename
       viewerContent.value = full.content ?? ''
+    }
+
+    if (mode !== 'view') return // 编辑态不加载预览
+
+    const ft = (full?.fileType || row.fileType || '').toLowerCase()
+    const fn = (full?.filename || row.filename || '').toLowerCase()
+    const isPdf = ft.includes('pdf') || fn.endsWith('.pdf')
+    const isDocx = ft.includes('officedocument.wordprocessingml')
+      || ft === 'application/docx'
+      || fn.endsWith('.docx')
+
+    if (isPdf) {
+      try {
+        previewUrl.value = await fetchBlobAsObjectUrl(row.id)
+        previewKind.value = 'pdf'
+      } catch (e: any) {
+        previewWarn.value = '原 PDF 文件未保留（上传已超 10MB 或早于预览功能），已回退为文本'
+        previewKind.value = 'text'
+      }
+    } else if (isDocx) {
+      try {
+        previewHtml.value = await fetchHtmlPreview(row.id)
+        previewKind.value = 'html'
+      } catch (e: any) {
+        previewWarn.value = '原 Word 文件未保留，已回退为文本'
+        previewKind.value = 'text'
+      }
+    } else {
+      previewKind.value = 'text'
     }
   } catch (e) {
     console.error('加载文档失败:', e)
@@ -205,6 +307,9 @@ async function openViewer(row: KnowledgeDocument, mode: 'view' | 'edit') {
     viewerLoading.value = false
   }
 }
+
+// Dialog 关闭时释放 Object URL，避免内存泄漏
+watch(viewerVisible, (v) => { if (!v) releasePreviewUrl() })
 
 async function saveViewer() {
   if (!viewerDoc.value) return
@@ -438,5 +543,21 @@ function clearSearch() {
 }
 .viewer-hint {
   color: #94a3b8;
+}
+/* 查看弹窗的 PDF / DOCX iframe 预览 */
+.viewer-preview {
+  width: 100%;
+}
+.preview-iframe {
+  width: 100%;
+  height: 540px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+}
+.preview-warn {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #d97706;
 }
 </style>

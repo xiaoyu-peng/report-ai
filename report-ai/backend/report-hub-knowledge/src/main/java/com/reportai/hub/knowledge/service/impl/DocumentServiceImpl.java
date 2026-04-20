@@ -40,6 +40,9 @@ public class DocumentServiceImpl implements DocumentService {
     @Value("${report-ai.knowledge.url-fetch-timeout-ms:10000}")
     private int urlFetchTimeoutMs;
 
+    /** 原文件 blob 保存上限：10 MB。超出者仅保留解析后的正文，查看弹窗走文本回退。 */
+    private static final long MAX_BLOB_BYTES = 10L * 1024 * 1024;
+
     @Override
     @Transactional
     public KnowledgeDocument upload(Long kbId, MultipartFile file, Long operatorId) {
@@ -47,10 +50,24 @@ public class DocumentServiceImpl implements DocumentService {
             throw new BusinessException("文件为空");
         }
         String filename = file.getOriginalFilename();
+
+        // 小于 10MB 的原文件读入内存，用于「查看」时前端直接预览 PDF / DOCX
+        byte[] raw = null;
+        if (file.getSize() > 0 && file.getSize() <= MAX_BLOB_BYTES) {
+            try (InputStream bin = file.getInputStream()) {
+                raw = bin.readAllBytes();
+            } catch (IOException e) {
+                throw new BusinessException("读取上传文件失败：" + e.getMessage());
+            }
+        }
+
         KnowledgeDocument doc = saveDocumentRow(kbId, filename,
                 guessType(filename), file.getSize(), operatorId);
 
-        try (InputStream in = file.getInputStream()) {
+        // Tika 解析用**缓存好的字节**，避免再次从 MultipartFile 读（临时文件可能已释放）
+        try (InputStream in = raw != null
+                ? new java.io.ByteArrayInputStream(raw)
+                : file.getInputStream()) {
             // 分页抽取：PDF 每页一个元素；其他格式单元素即全文。下游 chunker 依此计算 page_start/page_end。
             List<String> pages = tikaParser.extractPages(in, filename);
             finalizeDocument(doc, pages);
@@ -58,6 +75,11 @@ public class DocumentServiceImpl implements DocumentService {
             doc.setStatus("failed");
             documentMapper.updateById(doc);
             throw new BusinessException("读取上传文件失败：" + e.getMessage());
+        }
+
+        if (raw != null) {
+            doc.setFileBlob(raw);
+            documentMapper.updateById(doc);
         }
         return doc;
     }

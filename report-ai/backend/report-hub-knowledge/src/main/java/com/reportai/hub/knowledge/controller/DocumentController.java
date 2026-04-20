@@ -1,13 +1,16 @@
 package com.reportai.hub.knowledge.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.reportai.hub.common.PageResult;
 import com.reportai.hub.common.Result;
 import com.reportai.hub.common.context.UserContext;
+import com.reportai.hub.common.exception.BusinessException;
 import com.reportai.hub.knowledge.dto.UrlImportDTO;
 import com.reportai.hub.knowledge.entity.KnowledgeDocument;
 import com.reportai.hub.knowledge.mapper.KnowledgeDocumentMapper;
+import com.reportai.hub.knowledge.service.DocumentPreviewService;
 import com.reportai.hub.knowledge.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,9 +18,15 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Tag(name = "知识文档")
 @RestController
@@ -27,6 +36,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final DocumentPreviewService previewService;
     private final KnowledgeDocumentMapper documentMapper;
 
     @Operation(summary = "上传文档（multipart）")
@@ -84,6 +94,54 @@ public class DocumentController {
     @PostMapping("/documents/{id}/reembed")
     public Result<KnowledgeDocument> reembed(@PathVariable Long id) {
         return Result.success(documentService.reembed(id));
+    }
+
+    /**
+     * 原文件二进制下载 / 预览。PDF 浏览器原生渲染到 iframe；DOCX 由前端配 `/html` 端点转 HTML 预览。
+     * 必须单独查 file_blob，因为实体默认 select=false 省流量。
+     */
+    @Operation(summary = "下载/预览原始文件（PDF 可直接 iframe）")
+    @GetMapping("/documents/{id}/file")
+    public ResponseEntity<byte[]> file(@PathVariable Long id,
+                                        @RequestParam(value = "download", defaultValue = "false") boolean download) {
+        KnowledgeDocument meta = documentMapper.selectById(id);
+        if (meta == null) throw new BusinessException("文档不存在: " + id);
+        KnowledgeDocument blobRow = documentMapper.selectOne(
+                Wrappers.<KnowledgeDocument>lambdaQuery()
+                        .select(KnowledgeDocument::getId, KnowledgeDocument::getFileBlob)
+                        .eq(KnowledgeDocument::getId, id));
+        byte[] bytes = blobRow == null ? null : blobRow.getFileBlob();
+        if (bytes == null || bytes.length == 0) {
+            throw new BusinessException("原文件不可用（未保留或超过 10MB）");
+        }
+        String contentType = meta.getFileType();
+        if (contentType == null || contentType.isBlank()) contentType = "application/octet-stream";
+        String encodedName = URLEncoder.encode(
+                meta.getFilename() == null ? ("doc-" + id) : meta.getFilename(),
+                StandardCharsets.UTF_8).replace("+", "%20");
+        String disposition = (download ? "attachment" : "inline")
+                + "; filename=\"" + encodedName + "\"; filename*=UTF-8''" + encodedName;
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, contentType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=60")
+                // PDF 在 iframe 里需要允许同源嵌入；Spring Security 默认 X-Frame-Options: DENY
+                .header("X-Frame-Options", "SAMEORIGIN")
+                .body(bytes);
+    }
+
+    /** DOCX → HTML 内联预览。PDF 也调这个端点会直接 302 到 `/file`，让前端一套逻辑处理。 */
+    @Operation(summary = "DOCX → HTML 内联预览")
+    @GetMapping(value = "/documents/{id}/html", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> html(@PathVariable Long id) {
+        KnowledgeDocument meta = documentMapper.selectById(id);
+        if (meta == null) throw new BusinessException("文档不存在: " + id);
+        String html = previewService.renderHtml(id, meta);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "text/html;charset=UTF-8")
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=60")
+                .body(html);
     }
 
     @lombok.Data
