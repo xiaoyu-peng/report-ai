@@ -123,8 +123,26 @@ fi
 
 # ---- 4. Docker daemon ready? ----
 if ! docker info >/dev/null 2>&1; then
-  err "Docker daemon 未运行；请先打开 Docker Desktop（macOS）或 sudo systemctl start docker（Linux）"
-  exit 1
+  if [[ "$OS" == "mac" ]] && [[ -d "/Applications/Docker.app" ]]; then
+    warn "Docker daemon 未运行，自动打开 Docker.app（首次需授权）"
+    open -a Docker
+    echo -n "等 Docker 就绪（最多 90s）"
+    for i in {1..45}; do
+      if docker info >/dev/null 2>&1; then
+        echo " OK"
+        break
+      fi
+      echo -n "."; sleep 2
+      if [[ $i -eq 45 ]]; then
+        echo
+        err "Docker 仍未启动；请手动确认 Docker.app 已弹出 + 点过【允许】授权后，重新跑 ./setup.sh"
+        exit 1
+      fi
+    done
+  else
+    err "Docker daemon 未运行；请先打开 Docker Desktop（macOS）或 sudo systemctl start docker（Linux）"
+    exit 1
+  fi
 fi
 ok "Docker daemon 在线"
 
