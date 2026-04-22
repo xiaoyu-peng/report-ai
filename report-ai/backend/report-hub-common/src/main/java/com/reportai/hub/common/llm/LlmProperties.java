@@ -20,7 +20,7 @@ public class LlmProperties {
         private String apiKey;
         private String model = "claude-sonnet-4-6";
         private int maxTokens = 4096;
-        private int timeoutSeconds = 120;
+        private int timeoutSeconds = 300;
     }
 
     @Data
@@ -32,6 +32,6 @@ public class LlmProperties {
         /** 可选：模型名（如 doubao-seed-2-0-lite-260215），仅做记录，实际调用以 endpoint 为准 */
         private String model;
         private int maxTokens = 4096;
-        private int timeoutSeconds = 120;
+        private int timeoutSeconds = 300;
     }
 }

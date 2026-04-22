@@ -51,8 +51,8 @@ fi
 
 # ---- 4. 启动容器 ----
 if [[ "$MODE" == "dev" ]]; then
-  echo "[start.sh] DEV 模式：只起 mysql + redis（前后端请在 IDE 里跑）"
-  docker compose up -d mysql redis
+  echo "[start.sh] DEV 模式：起 mysql + redis + elasticsearch（前后端请在 IDE 里跑）"
+  docker compose up -d mysql redis elasticsearch
 else
   echo "[start.sh] 完整模式：起 mysql + redis + backend + frontend"
   docker compose up -d $REBUILD
@@ -74,7 +74,13 @@ if [[ "$MODE" == "dev" ]]; then
   cat <<EOF
 [start.sh] DEV 模式就绪。接下来请自行启动前后端：
   后端:   export JAVA_HOME=/path/to/jdk17; cd backend && mvn -pl report-hub-api spring-boot:run
-  前端:   cd frontend && npm run dev    ( http://localhost:3001 )
+  前端:   cd frontend && npm run dev    ( http://localhost:3002 / :3001 )
+  ES 索引同步（后端起来后跑一次）：
+          TOKEN=\$(curl -s -X POST http://localhost:8080/api/v1/login \\
+                    -H 'Content-Type: application/json' \\
+                    -d '{"username":"admin","password":"admin123"}' \\
+                  | python3 -c "import sys,json;print(json.load(sys.stdin)['data']['token'])")
+          curl -X POST http://localhost:8080/api/v1/es/reindex -H "Authorization: Bearer \$TOKEN"
 EOF
   exit 0
 fi
@@ -93,6 +99,24 @@ done
 if [[ -n "$SEED" ]]; then
   echo "[start.sh] 塞入演示语料..."
   bash scripts/seed-knowledge.sh || echo "[start.sh] 种子脚本失败（非阻塞），请手动重跑"
+fi
+
+# ---- 7b. 从 snapshot.sql 重建 ES 索引（如有快照数据） ----
+if [[ -f database/snapshot.sql ]]; then
+  echo -n "[start.sh] 登录获取 token 以触发 ES reindex..."
+  TOKEN=$(curl -sf -X POST "http://localhost:8081/api/v1/login" \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"admin123"}' \
+          | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['token'])" 2>/dev/null || true)
+  if [[ -n "$TOKEN" ]]; then
+    echo " OK"
+    echo "[start.sh] 调用 POST /api/v1/es/reindex 从 MySQL 同步到 ES..."
+    curl -sf -X POST "http://localhost:8081/api/v1/es/reindex" \
+      -H "Authorization: Bearer $TOKEN" \
+      | python3 -m json.tool 2>/dev/null || echo "[start.sh] reindex 失败（非阻塞），可手动调用"
+  else
+    echo " 跳过（登录失败，可能数据库未初始化）"
+  fi
 fi
 
 cat <<'EOF'
