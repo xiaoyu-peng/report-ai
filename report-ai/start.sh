@@ -16,7 +16,7 @@ SEED=""
 for arg in "$@"; do
   case "$arg" in
     --dev)     MODE="dev" ;;
-    --rebuild) REBUILD="--build --no-cache" ;;
+    --rebuild) REBUILD="1" ;;
     --seed)    SEED="yes" ;;
     -h|--help)
       grep '^#' "$0" | head -10
@@ -42,8 +42,42 @@ fi
 # ---- 3. 预编译后端 jar（完整模式才需要） ----
 if [[ "$MODE" == "full" ]]; then
   if [[ ! -f backend/report-hub-api/target/report-hub-api-1.0.0.jar ]] || [[ -n "$REBUILD" ]]; then
-    echo "[start.sh] 编译后端 jar（mvn package -DskipTests）..."
-    ( cd backend && mvn -q -DskipTests package )
+    # 自动发现 JDK 17（绕开用户 JAVA_HOME 指向 1.8/11/21 的坑）
+    if [[ -z "${JAVA_HOME:-}" ]] || ! "$JAVA_HOME/bin/java" -version 2>&1 | grep -Eq 'version "17'; then
+      JDK17=""
+      if [[ "$(uname -s)" == "Darwin" ]]; then
+        JDK17=$(/usr/libexec/java_home -v 17 2>/dev/null || true)
+      fi
+      if [[ -z "$JDK17" ]]; then
+        for cand in /usr/lib/jvm/java-17-* /usr/lib/jvm/temurin-17* /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home; do
+          [[ -d "$cand" ]] && { JDK17="$cand"; break; }
+        done
+      fi
+      if [[ -n "$JDK17" ]]; then
+        echo "[start.sh] 当前 JAVA_HOME 不是 17，自动切换到：$JDK17"
+        export JAVA_HOME="$JDK17"
+        export PATH="$JDK17/bin:$PATH"
+      else
+        echo "[start.sh] ❌ 未找到 JDK 17。当前 JAVA_HOME=${JAVA_HOME:-未设置}"
+        echo "[start.sh] 请装 JDK 17 后重试，或显式 export JAVA_HOME=/path/to/jdk17"
+        exit 1
+      fi
+    fi
+    echo "[start.sh] 用 JDK：$(java -version 2>&1 | head -1)"
+    # 用项目内 .mvn-settings.xml 强制走阿里云镜像（修国内 _remote.repositories 缓存失效问题）
+    MVN_OPTS=""
+    if [[ -f backend/.mvn-settings.xml ]]; then
+      MVN_OPTS="-s .mvn-settings.xml"
+      echo "[start.sh] 使用 backend/.mvn-settings.xml（阿里云镜像）"
+    fi
+    echo "[start.sh] 编译后端 jar（mvn package -DskipTests，输出在 logs/mvn-build.log）..."
+    mkdir -p logs
+    ( cd backend && mvn -B -DskipTests $MVN_OPTS package ) 2>&1 | tee logs/mvn-build.log | grep -E "^\[INFO\] (Building|BUILD|---|Installing)" || true
+    if [[ ! -f backend/report-hub-api/target/report-hub-api-1.0.0.jar ]]; then
+      echo "[start.sh] ❌ 编译失败，详见 logs/mvn-build.log 末尾"
+      tail -30 logs/mvn-build.log
+      exit 1
+    fi
   else
     echo "[start.sh] 后端 jar 已存在，跳过编译（如需强制重建用 --rebuild）。"
   fi
@@ -54,8 +88,12 @@ if [[ "$MODE" == "dev" ]]; then
   echo "[start.sh] DEV 模式：起 mysql + redis + elasticsearch（前后端请在 IDE 里跑）"
   docker compose up -d mysql redis elasticsearch
 else
-  echo "[start.sh] 完整模式：起 mysql + redis + backend + frontend"
-  docker compose up -d $REBUILD
+  echo "[start.sh] 完整模式：起 mysql + redis + es + backend + frontend"
+  if [[ -n "$REBUILD" ]]; then
+    echo "[start.sh] 强制重建镜像（docker compose build --no-cache backend frontend）..."
+    docker compose build --no-cache backend frontend
+  fi
+  docker compose up -d
 fi
 
 # ---- 5. 等 mysql 健康 ----
