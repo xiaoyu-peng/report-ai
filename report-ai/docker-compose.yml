@@ -128,6 +128,9 @@ services:
       - report-ai-network
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     image: report-ai-frontend:latest
     container_name: report-ai-frontend
     restart: always
